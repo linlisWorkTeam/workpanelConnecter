@@ -1,0 +1,46 @@
+# Linlis / agent runtime (not product source)
+.linlis/
+
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+*~
+.idea/
+.vscode/
+*.code-workspace
+
+# Env & secrets
+.env
+.env.*
+!.env.example
+*.pem
+credentials.json
+secrets/
+
+config/servers.json
+config/relay.json
+
+# Relay SQLite
+data/
+
+# Build / deps
+node_modules/
+dist/
+build/
+target/
+__pycache__/
+*.pyc
+.venv/
+venv/
+.coverage
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Logs & local data
+*.log
+logs/
+data/local/
+tmp/
+.cache/

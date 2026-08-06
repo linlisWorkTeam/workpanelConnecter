@@ -30,17 +30,17 @@
 ## 进度
 
 - [x] 设计 + plan + 首 commit docs（`1b19b45`）  
-- [x] Phase 0–1 中继 + `RELAY_GATE_OK` / `RELAY_UNIT_OK` / `npm test`（**cs · 2026-08-06**）  
+- [x] Phase 0–1 中继 + `RELAY_GATE_OK`  
+- [x] **Phase 1.5** SQLite + 配置 pets + 轮询回显 + 幂等/死信/revoke（**cs · 2026-08-06**）  
 - [ ] Phase 2 systemd  
 - [ ] Phase 3 WorkPet  
 - [ ] Phase 4 E2E  
 
-### Phase 0–1 简报
+### Phase 1.5 简报
 
-- `config/relay.example.json`；边界/README 已对齐「中继+CLI」  
-- `src/relay/*` + `bin/connecter-relay.js`；开发 `CONNECTER_RELAY_PORT=9080`  
-- 门禁：`npm run test:relay-unit`、`npm test`、`npm run test:relay` → OK  
-- 实测 chat → canary messageId `94dd0ad4-…`；pet→prod → 403  
+- `node:sqlite` WAL · `data/connector.db`；`relay.json.pets` → `agent_instances`  
+- API：`GET /v1/messages?since=`、`POST /v1/session/revoke`、`GET /v1/instances`  
+- 门禁：`npm run test:relay` → `RELAY_GATE_OK`（canary 实跑 + 幂等 + down ack + dead + revoke）  
 
 ## 变更日志
 

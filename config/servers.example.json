@@ -1,0 +1,28 @@
+{
+  "servers": [
+    {
+      "id": "svc-a",
+      "name": "WorkPanel-A",
+      "baseUrl": "http://127.0.0.1:19001",
+      "teams": [
+        {
+          "id": "team-a",
+          "name": "group-a",
+          "coordinatorPath": "/coordinator"
+        }
+      ]
+    },
+    {
+      "id": "svc-b",
+      "name": "WorkPanel-B",
+      "baseUrl": "http://127.0.0.1:19002",
+      "teams": [
+        {
+          "id": "team-b",
+          "name": "group-b",
+          "coordinatorPath": "/coordinator"
+        }
+      ]
+    }
+  ]
+}

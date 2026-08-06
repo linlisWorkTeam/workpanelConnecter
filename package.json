@@ -1,0 +1,26 @@
+{
+  "name": "workpanel-connecter",
+  "version": "0.1.0",
+  "description": "CLI scheduler plane for cross-WorkPanel coordination via Team Coordinator agents",
+  "type": "module",
+  "bin": {
+    "connecter": "./bin/connecter.js"
+  },
+  "scripts": {
+    "start": "node bin/connecter.js",
+    "relay": "node bin/connecter-relay.js",
+    "mock-coordinator": "node mock/coordinator-server.js",
+    "smoke": "node scripts/smoke.js",
+    "test": "node scripts/smoke.js",
+    "gate": "node scripts/smoke.js",
+    "test:canary": "node scripts/canary-gate.js",
+    "gate:canary": "node scripts/canary-gate.js",
+    "test:relay": "node scripts/relay-gate.js",
+    "gate:relay": "node scripts/relay-gate.js",
+    "test:relay-unit": "node scripts/relay-unit-smoke.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "license": "UNLICENSED"
+}

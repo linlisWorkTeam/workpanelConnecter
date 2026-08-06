@@ -1,0 +1,58 @@
+{
+  "listen": {
+    "host": "0.0.0.0",
+    "port": 80
+  },
+  "db": {
+    "path": "data/connector.db"
+  },
+  "auth": {
+    "tokens": ["dev-ops-token-change-me"]
+  },
+  "allowProdFromPet": false,
+  "rateLimitPerMin": 60,
+  "backends": {
+    "canary": {
+      "baseUrl": "http://127.0.0.1:8081",
+      "kind": "workpanel",
+      "auth": {
+        "username": "root",
+        "password": "root"
+      }
+    },
+    "prod": {
+      "baseUrl": "http://127.0.0.1:8080",
+      "kind": "workpanel",
+      "auth": {
+        "username": "root",
+        "password": "root"
+      }
+    }
+  },
+  "defaults": {
+    "env": "canary",
+    "group": "灰度测试",
+    "coordinatorAgentName": "Cursor Agent"
+  },
+  "pets": [
+    {
+      "id": "pet-dev-1",
+      "name": "Dev WorkPet",
+      "token": "dev-pet-token-change-me",
+      "groups": [
+        {
+          "env": "canary",
+          "groupId": "528b36ba-4769-4b4d-9fa8-51e2de132396",
+          "groupName": "灰度测试",
+          "agentName": "Cursor Agent"
+        },
+        {
+          "env": "canary",
+          "groupId": "smoke-chat-placeholder",
+          "groupName": "smoke-chat",
+          "agentName": "Cursor Agent"
+        }
+      ]
+    }
+  ]
+}

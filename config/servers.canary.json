@@ -1,0 +1,37 @@
+{
+  "servers": [
+    {
+      "id": "wp-canary",
+      "name": "LinlisWorkPanel-Canary",
+      "kind": "workpanel",
+      "baseUrl": "http://127.0.0.1:8081",
+      "auth": {
+        "username": "root",
+        "password": "root"
+      },
+      "teams": [
+        {
+          "id": "528b36ba-4769-4b4d-9fa8-51e2de132396",
+          "name": "灰度测试",
+          "coordinatorAgentName": "Cursor Agent"
+        }
+      ]
+    },
+    {
+      "id": "wp-unreachable",
+      "name": "Unreachable-Slot",
+      "kind": "workpanel",
+      "baseUrl": "http://127.0.0.1:19999",
+      "auth": {
+        "username": "root",
+        "password": "root"
+      },
+      "teams": [
+        {
+          "id": "dead",
+          "name": "dead-group"
+        }
+      ]
+    }
+  ]
+}

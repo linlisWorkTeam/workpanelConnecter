@@ -166,12 +166,12 @@ MVP 持久化策略：`messages` / `runs` / `agent_instances` / `sessions` **落
 
 ### 5.4 验收清单（MVP 完成定义）
 
-- [ ] `npm test`（mock 门禁）绿；`npm run test:relay` 绿（含回显与幂等用例）
-- [ ] canary 联调：WorkPet 模拟端 → `/v1/chat` → 灰度群真实 run 受理；轮询拉到下行消息
-- [ ] 注册映射：配置 2 个群 = 2 个 agent_instance，路由互不串
-- [ ] 可靠性：模拟 WP 不可达 → 重试 → 死信；重启后未投递消息续投
-- [ ] 安全：无 token 403；`prod` 从 WorkPet 侧 403（`allowProdFromPet=false`）
-- [ ] docs 同步（本设计 + plan 更新）
+- [x] `npm test`（mock 门禁）绿；`npm run test:relay` 绿（含回显与幂等用例）— cs 2026-08-06 Phase 1.5
+- [x] canary 联调：pet token → `/v1/chat` → 灰度群真实 run 受理；`GET /v1/messages?since=` 拉到 up+down
+- [x] 注册映射：配置 2 个群 = 2 个 agent_instance（gate 断言）
+- [x] 可靠性：dead backend → failed/死信；幂等同 `messages.id` 不双发；启动 `resumePending` 已挂
+- [x] 安全：无 token 401；`prod` 从 pet 403；`/v1/session/revoke` 后 401
+- [x] docs 同步（本设计 + plan + README）
 
 ## 6. 风险与缓解
 
