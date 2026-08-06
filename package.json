@@ -17,6 +17,8 @@
     "gate:canary": "node scripts/canary-gate.js",
     "test:relay": "node scripts/relay-gate.js",
     "gate:relay": "node scripts/relay-gate.js",
+    "test:workpet": "node scripts/workpet-gate.js",
+    "gate:workpet": "node scripts/workpet-gate.js",
     "test:relay-unit": "node scripts/relay-unit-smoke.js"
   },
   "engines": {

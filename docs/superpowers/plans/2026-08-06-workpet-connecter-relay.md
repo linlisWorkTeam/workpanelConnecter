@@ -231,7 +231,12 @@
 
 ---
 
-## Phase 3 — WorkPet（猫猫球）MVP
+## Phase 3 — WorkPet（猫猫球）MVP ✅ 已完成（2026-08-06，OpenClaw）
+
+> 落地：`apps/workpet/`（Tauri 2 壳 + 纯 JS SDK）；SDK 契约门禁 `test:workpet` 对线上 :80 全绿（`WORKPET_GATE_OK`）。
+> 说明：Tauri 壳需在桌面系统（Win/macOS）构建（服务器无 GUI 库、Tauri 不支持跨平台出包）；构建步骤见 `apps/workpet/README.md`。
+> CORS：nginx `/v1/` 已放开跨源（MVP），T2 收紧为源白名单。
+
 
 ### Task 3.1: Tauri 工程骨架
 

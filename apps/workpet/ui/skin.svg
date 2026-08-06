@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120" width="120" height="120">
+  <defs>
+    <radialGradient id="body" cx="50%" cy="40%" r="60%">
+      <stop offset="0%" stop-color="#ffd9a0"/>
+      <stop offset="100%" stop-color="#f6ad55"/>
+    </radialGradient>
+  </defs>
+  <!-- 耳朵 -->
+  <path d="M28 52 L18 18 L54 38 Z" fill="#f6ad55" stroke="#dd6b20" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M92 52 L102 18 L66 38 Z" fill="#f6ad55" stroke="#dd6b20" stroke-width="2" stroke-linejoin="round"/>
+  <path d="M30 46 L24 26 L48 38 Z" fill="#fbd38d"/>
+  <path d="M90 46 L96 26 L72 38 Z" fill="#fbd38d"/>
+  <!-- 脸 -->
+  <circle cx="60" cy="64" r="42" fill="url(#body)" stroke="#dd6b20" stroke-width="2.5"/>
+  <!-- 眼睛 -->
+  <circle cx="46" cy="58" r="7" fill="#2d3748"/>
+  <circle cx="74" cy="58" r="7" fill="#2d3748"/>
+  <circle cx="48.5" cy="55.5" r="2.4" fill="#fff"/>
+  <circle cx="76.5" cy="55.5" r="2.4" fill="#fff"/>
+  <!-- 鼻子 -->
+  <path d="M57 70 L63 70 L60 75 Z" fill="#dd6b20"/>
+  <!-- 胡须 -->
+  <path d="M30 66 L14 62 M30 72 L14 74 M90 66 L106 62 M90 72 L106 74" stroke="#dd6b20" stroke-width="2" stroke-linecap="round" fill="none"/>
+  <!-- 嘴 -->
+  <path d="M60 75 Q54 82 48 79 M60 75 Q66 82 72 79" stroke="#dd6b20" stroke-width="2" fill="none" stroke-linecap="round"/>
+</svg>

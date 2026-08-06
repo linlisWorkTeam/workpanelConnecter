@@ -1,0 +1,16 @@
+{
+  "name": "workpet",
+  "version": "0.1.0",
+  "private": true,
+  "description": "WorkPet 猫猫球 — WorkPanel 桌宠入口（经 Connecter 中继）",
+  "scripts": {
+    "tauri": "tauri",
+    "dev": "tauri dev",
+    "build": "tauri build",
+    "test:workpet": "node ../../scripts/workpet-gate.js"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "@tauri-apps/cli": "^2"
+  }
+}

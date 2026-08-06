@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>WorkPet</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <!-- 球态（默认窗口 120x120） -->
+  <div id="ball" class="ball idle" title="WorkPet">
+    <img id="ballSkin" src="skin.svg" alt="cat" draggable="false" />
+    <div id="ballStatus" class="ball-status"></div>
+  </div>
+
+  <!-- 展开聊天面板 -->
+  <div id="panel" class="panel hidden">
+    <div class="panel-head">
+      <span id="panelTitle">WorkPet · 灰度测试</span>
+      <button id="collapseBtn" class="icon-btn" title="收起">–</button>
+    </div>
+    <div id="msgList" class="msg-list"></div>
+    <div class="panel-foot">
+      <input id="input" class="input" type="text" placeholder="说点什么…（Enter 发送）" autocomplete="off" />
+      <button id="sendBtn" class="send-btn">发送</button>
+    </div>
+  </div>
+
+  <script src="connecterApi.js"></script>
+  <script src="main.js"></script>
+</body>
+</html>

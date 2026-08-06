@@ -1,0 +1,9 @@
+{
+  "connecterBaseUrl": "http://YOUR_SERVER_IP:80",
+  "token": "REPLACE_WITH_PET_TOKEN_FROM_RELAY_CONFIG",
+  "env": "canary",
+  "group": "灰度测试",
+  "agent": "Cursor Agent",
+  "pollIntervalMs": 2000,
+  "maxRunPolls": 30
+}
