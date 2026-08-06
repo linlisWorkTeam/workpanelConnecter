@@ -1,7 +1,7 @@
 # WorkConnector 中继服务 · 系统设计
 
 > 日期：2026-08-06 · 作者：OpenClaw（PM）
-> 状态：**待评审**（评审通过后作为实现依据，与 `docs/workpet-connecter-design.md` D1–D12 对齐）
+> 状态：**已评审通过，作为本项目规范**（root 2026-08-06 11:22 确认 1A/2A/3A；与 `docs/workpet-connecter-design.md` D1–D12 对齐）
 > 关联：`docs/superpowers/plans/2026-08-06-workpet-connecter-relay.md`（cs 已实现 Phase 0–1）
 
 ## 0. 定位与设计原则
@@ -184,8 +184,12 @@ MVP 持久化策略：`messages` / `runs` / `agent_instances` / `sessions` **落
 | 与 cs 实现并行冲突 | 本设计为文档，Phase 1.5 起实现前先在群内确认 |
 | token 泄露 | 可吊销 + 轮换；二期 mTLS |
 
-## 7. 待确认（3 个开放问题）
+## 7. 已确认决策（规范，2026-08-06 root 拍板）
 
-1. **注册形态**：MVP 用配置式注册（推荐，零审批复杂度），还是就要运行时 `/v1/register` + 管理员审批？
-2. **回显方式**：MVP 接受轮询回显（推荐，简单可靠），还是必须 WS 长连接（排期 +1~2 天）？
-3. **持久化**：MVP 就落 SQLite（推荐，满足可靠性要求），还是内存态即可、二期再落盘？
+| # | 决策 | 内容 |
+|---|---|---|
+| N1（原 1A） | **注册形态 = 配置式** | MVP 用 `relay.json` 的 `pets` 段登记 pet→多群→多 agent 实例，启动即生效；`POST /v1/register` 动态注册+审批为二期协议预留 |
+| N2（原 2A） | **回显 = 轮询** | WorkPet 用 `GET /v1/messages?since=<cursor>` 游标续拉；WS 长连接二期再上 |
+| N3（原 3A） | **持久化 = SQLite 落盘（MVP 即做）** | `messages`/`runs`/`agent_instances`/`sessions`/`delivery_log` 落 `data/connector.db`（WAL），重启不丢、可恢复 |
+
+以上三条为**项目规范**，实现（Phase 1.5）与后续阶段必须遵守；变更需 root 重新确认并更新本文档。
