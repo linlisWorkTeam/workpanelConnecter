@@ -291,7 +291,11 @@
 
 ---
 
-## Phase 4 — 联调与验收
+## Phase 4 — 联调与验收 ✅ 已完成（2026-08-06，OpenClaw 服务器侧）
+
+> E1–E8 全部通过，证据见 `docs/workpet-e2e-checklist.md` 与 `docs/canary-workpet-relay-2026-08-06.md`。
+> 补充：`scripts/e2e-resume-test.js`（杀进程重启续投，`RESUME_E2E_OK`）；relay-gate 端口 9080→9095（避免与生产 systemd 撞端口）。
+
 
 ### Task 4.1: E2E 清单（人工 + 脚本）
 

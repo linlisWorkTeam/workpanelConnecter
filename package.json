@@ -19,6 +19,7 @@
     "gate:relay": "node scripts/relay-gate.js",
     "test:workpet": "node scripts/workpet-gate.js",
     "gate:workpet": "node scripts/workpet-gate.js",
+    "test:e2e-resume": "node scripts/e2e-resume-test.js",
     "test:relay-unit": "node scripts/relay-unit-smoke.js"
   },
   "engines": {

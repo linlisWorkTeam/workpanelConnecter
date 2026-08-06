@@ -1,16 +1,29 @@
 # WorkPanelConnecter — Roadmap
 
-> 日期：2026-08-04  
+> 日期：2026-08-04
 > 依据：群聊愿景 + `architecture.md` + `connecter-cli.md` + `scheduling-boundaries.md`
 
-## 角色分工（锁定）
+## ⚡ 2026-08-06 更新：中继 + WorkPet MVP 全部落地 ✅
+
+> 新架构（冻结设计 D1–D16 + 系统设计 N1–N3）：Connecter = 稳定中继（nginx :80 → :9080 systemd），WorkPet = 同仓 Tauri 猫猫球。实现路径见 `docs/superpowers/plans/2026-08-06-workpet-connecter-relay.md`。
+
+| Phase | 内容 | 状态 |
+|-------|------|------|
+| 0–1 | 中继核：router/auth/handlers、配置、`test:relay` | ✅ 完成（`4b29ca9`） |
+| 1.5 | SQLite 落库 + 配置式注册 + 轮询回显 + 幂等/死信/吊销 | ✅ 完成（`4b29ca9`） |
+| 2 | systemd :9080 + nginx :80 反代（方案 B / D16） | ✅ 已上线（`fb6c49d`） |
+| 3 | WorkPet 猫猫球（Tauri 2 壳 + JS SDK） | ✅ 完成（`ac17952`，桌面构建留用户本地） |
+| 4 | E2E 验收 E1–E8 + 灰度记录 | ✅ 全部通过（见 `docs/workpet-e2e-checklist.md`、`docs/canary-workpet-relay-2026-08-06.md`） |
+| 5 | 二期：WP 回连/WS/动态注册/多适配器/443 T2 | ⏳ 未开始 |
+
+## 角色分工（2026-08-06 更新）
 
 | 角色 | 职责 |
 |------|------|
-| **cs** | 需求/设计/计划/交接；可协助文档；**实现交 codex goal** |
-| **codex** | **按 plan 实现**（Goal 模式）；从 Task 0.1 起；门禁自验 |
+| **OpenClaw** | 开发负责人（2026-08-06 起，root 指令「接下来就你负责开发」）；设计/实现/门禁/部署 |
+| **cs** | Phase 0–1.5 实现（已移交）；后续按需协助 |
+| **codex** | 搁置（工具调用通道故障，恢复条件=至少一次真实命令执行成功） |
 
-> 2026-08-04：群指令「codex 调用有问题，cs 先自己干」→ 阶段 A 收口 + 阶段 B 由 **cs** 执行。
 
 ## 开发节奏（锁定）
 

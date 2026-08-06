@@ -23,7 +23,8 @@ async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'connecter-relay15-'));
   const dbPath = path.join(tmp, 'connector.db');
   const cfgPath = path.join(tmp, 'relay.json');
-  const PORT = Number(process.env.CONNECTER_RELAY_PORT || 9080);
+  // 专用测试端口：9080 已被生产 systemd 服务占用，门禁自起实例用 9095
+  const PORT = Number(process.env.CONNECTER_RELAY_PORT || 9095);
   const PET_TOKEN = 'gate-pet-token';
   const OPS_TOKEN = 'gate-ops-token';
 
