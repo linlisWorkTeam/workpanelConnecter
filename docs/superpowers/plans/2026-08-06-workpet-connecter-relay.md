@@ -199,7 +199,11 @@
 
 ---
 
-## Phase 2 — 部署（服务器中继）
+## Phase 2 — 部署（服务器中继）✅ 已完成（2026-08-06，方案 B）
+
+> 落地：root 拍板 **B**（nginx :80 反代 `/v1/*` → Connecter :9080），见 D16。
+> systemd 服务 `connecter-relay` 已 enable+active；nginx 已加 `/v1/` location（备份 `workpanel.conf.bak.202608061200`）。
+> 验证：`:9080/v1/health` ✅、`:80/v1/health` ✅、homepage :80/ 仍 200 ✅、经 :80 真实 chat → canary runId `59b74233-…` ✅
 
 ### Task 2.1: systemd unit + 端口策略
 

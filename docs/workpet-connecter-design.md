@@ -23,6 +23,7 @@
 | D13 | **注册形态 = 配置式**（2026-08-06 root 确认）：`relay.json.pets` 登记 pet→多群→多 agent 实例，启动即生效；动态注册+审批二期（系统设计 N1） |
 | D14 | **回显 = 轮询**（2026-08-06 root 确认）：`GET /v1/messages?since=` 游标续拉；WS 二期（系统设计 N2） |
 | D15 | **持久化 = SQLite 落盘（MVP 即做）**（2026-08-06 root 确认）：messages/runs/agent_instances/sessions/delivery_log，WAL，重启可恢复（系统设计 N3） |
+| D16 | **:80 落地方式 = nginx 反代共存（方案 B）**（2026-08-06 root 拍板）：nginx 保留 :80（homepage/WorkPanel 域名共存），`/v1/*` 反代 → Connecter 本机 **:9080**（systemd）；对外仍以 :80 可达，满足 D8「Connecter 占 80」意图；附带收益：免 root 绑 80/setcap；T2 时 443 反代同路径 |
 
 ## 2. 目标拓扑
 

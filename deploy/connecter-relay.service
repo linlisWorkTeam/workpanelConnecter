@@ -1,0 +1,19 @@
+[Unit]
+Description=WorkConnector Relay (HTTP relay on :9080, fronted by nginx :80)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/AI/WorkPanelConnecter
+Environment=CONNECTER_RELAY_PORT=9080
+Environment=CONNECTER_RELAY_CONFIG=/AI/WorkPanelConnecter/config/relay.json
+Environment=NODE_ENV=production
+ExecStart=/usr/bin/node /AI/WorkPanelConnecter/bin/connecter-relay.js
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,19 @@
+# WorkConnector Relay — nginx 反代片段（方案 B：:80 → Connecter :9080）
+# 决策：root 2026-08-06 11:59 拍板 B —— nginx 保留 :80（homepage/WorkPanel 域名共存），
+#       `/v1/*` 反代到本机 Connecter :9080。Connecter 对外仍以 :80 可达（满足 D8）。
+#
+# 用法（已由 OpenClaw 于 2026-08-06 应用到 /etc/nginx/conf.d/workpanel.conf 的 default_server）：
+#   1) 把下方 location 块加入 :80 的 default_server（或独立 server 块 + server_name）
+#   2) nginx -t && systemctl reload nginx
+#
+# 注意：^~ 前缀优先于 location / ，不影响 homepage / WorkPanel 现有路由。
+
+    location ^~ /v1/ {
+        proxy_pass http://127.0.0.1:9080;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_read_timeout 60;
+    }
