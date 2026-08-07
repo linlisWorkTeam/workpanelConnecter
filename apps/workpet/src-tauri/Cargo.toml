@@ -1,7 +1,7 @@
 [package]
 name = "workpet"
-version = "0.1.0"
-description = "WorkPet 猫猫球 — WorkPanel 桌宠入口"
+version = "0.2.0"
+description = "WorkPet Live2D 桌宠 — WorkPanel 桌面入口"
 edition = "2021"
 
 [build-dependencies]

@@ -44,3 +44,5 @@ logs/
 data/local/
 tmp/
 .cache/
+.codex-tmp-cubism/
+apps/workpet/artifacts/

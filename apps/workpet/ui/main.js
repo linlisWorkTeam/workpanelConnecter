@@ -1,180 +1,293 @@
-/* WorkPet 猫猫球 UI 逻辑（Tauri 2 webview / 纯浏览器 dev 双模式） */
-(function () {
-  'use strict';
+import './connecterApi.js';
+import { Live2DPet } from './live2dPet.js';
+import {
+  PET_SIZE_STEPS,
+  nextPetScale,
+  normalizePetScale,
+  normalizePetState,
+  petWindowSize,
+} from './petConfig.js';
 
-  const $ = (id) => document.getElementById(id);
-  const ball = $('ball');
-  const panel = $('panel');
-  const msgList = $('msgList');
-  const input = $('input');
-  const sendBtn = $('sendBtn');
-  const titleEl = $('panelTitle');
+const $ = (id) => document.getElementById(id);
+const app = $('app');
+const panel = $('panel');
+const msgList = $('msgList');
+const input = $('input');
+const sendBtn = $('sendBtn');
+const titleEl = $('panelTitle');
+const connectionBadge = $('connectionBadge');
+const speechBubble = $('speechBubble');
+const loadingHint = $('loadingHint');
 
-  const BALL_SIZE = { w: 120, h: 120 };
-  const PANEL_SIZE = { w: 360, h: 520 };
+const PANEL_SIZE = { width: 440, height: 680 };
+const PET_SCALE_STORAGE_KEY = 'workpet.petScale';
 
-  let client = null;
-  let cfg = {};
-  let cursor = 0; // 轮询游标（N2）
-  let pollTimer = null;
-  let panelOpen = false;
-  let sending = false;
-  let runPolls = {};
+let client = null;
+let cfg = {};
+let cursor = 0;
+let pollTimer = null;
+let bubbleTimer = null;
+let panelOpen = false;
+let sending = false;
+let petScale = 1;
+const runPolls = {};
 
-  const tauriWindow = () =>
-    window.__TAURI__ && window.__TAURI__.window
-      ? window.__TAURI__.window.getCurrentWindow()
-      : null;
+const pet = new Live2DPet({
+  canvas: $('live2dCanvas'),
+  container: $('petStage'),
+  onReady: () => {
+    app.classList.add('live2d-ready');
+    app.classList.remove('fallback-active');
+    loadingHint.classList.add('is-hidden');
+  },
+  onFallback: (error) => {
+    app.classList.add('fallback-active');
+    app.classList.remove('live2d-ready');
+    loadingHint.textContent = `Live2D 降级：${error.message}`;
+    loadingHint.title = error.message;
+  },
+});
 
-  function setBallState(state) {
-    ball.classList.remove('idle', 'thinking', 'error');
-    ball.classList.add(state);
+function tauriWindow() {
+  return window.__TAURI__?.window?.getCurrentWindow?.() || null;
+}
+
+function logicalSize(size) {
+  const LogicalSize = window.__TAURI__?.dpi?.LogicalSize;
+  return LogicalSize ? new LogicalSize(size.width, size.height) : size;
+}
+
+function readSavedPetScale(config) {
+  try {
+    const saved = localStorage.getItem(PET_SCALE_STORAGE_KEY);
+    if (saved !== null) return normalizePetScale(saved);
+  } catch (_) { /* 无本地存储时读取配置 */ }
+  return normalizePetScale(config?.ui?.petScale);
+}
+
+function updateSizeButtons() {
+  $('sizeDownBtn').disabled = petScale <= PET_SIZE_STEPS[0];
+  $('sizeUpBtn').disabled = petScale >= PET_SIZE_STEPS.at(-1);
+}
+
+async function setPetScale(next, announce = true) {
+  petScale = normalizePetScale(next);
+  try { localStorage.setItem(PET_SCALE_STORAGE_KEY, String(petScale)); } catch (_) { /* 仅本次有效 */ }
+  updateSizeButtons();
+  if (!panelOpen) {
+    const win = tauriWindow();
+    if (win) await win.setSize(logicalSize(petWindowSize(petScale)));
   }
+  if (announce) showBubble(`桌宠大小：${Math.round(petScale * 100)}%`, 1800);
+}
 
-  function addMsg(text, kind, meta) {
-    const el = document.createElement('div');
-    el.className = 'msg ' + (kind || 'theirs');
-    el.textContent = text;
-    if (meta) {
-      const m = document.createElement('span');
-      m.className = 'meta';
-      m.textContent = meta;
-      el.appendChild(m);
-    }
-    msgList.appendChild(el);
-    msgList.scrollTop = msgList.scrollHeight;
-    return el;
+function resizePet(direction) {
+  setPetScale(nextPetScale(petScale, direction));
+}
+
+function setPetState(state) {
+  const next = normalizePetState(state);
+  app.dataset.state = next;
+  pet.setState(next);
+}
+
+function showBubble(text, duration = 3600) {
+  if (!text) return;
+  speechBubble.textContent = text.length > 72 ? `${text.slice(0, 72)}…` : text;
+  speechBubble.classList.remove('is-hidden');
+  clearTimeout(bubbleTimer);
+  bubbleTimer = setTimeout(() => speechBubble.classList.add('is-hidden'), duration);
+}
+
+function addMsg(text, kind = 'theirs', meta = '') {
+  const el = document.createElement('div');
+  el.className = `msg ${kind}`;
+  el.textContent = text;
+  if (meta) {
+    const detail = document.createElement('span');
+    detail.className = 'meta';
+    detail.textContent = meta;
+    el.appendChild(detail);
   }
+  msgList.appendChild(el);
+  msgList.scrollTop = msgList.scrollHeight;
+  return el;
+}
 
-  async function loadConfig() {
-    // 1) Tauri 命令（读 ~/.workpet/config.json）
-    if (window.__TAURI__ && window.__TAURI__.core) {
-      try {
-        const raw = await window.__TAURI__.core.invoke('get_config');
-        if (raw) return JSON.parse(raw);
-      } catch (e) {
-        addMsg('未找到配置：请复制 config.example.json 到 ~/.workpet/config.json', 'err');
-      }
-    }
-    // 2) dev 模式：同目录 config.json（vite/静态服务器）
+async function loadConfig() {
+  if (window.__TAURI__?.core) {
     try {
-      const res = await fetch('config.json');
-      if (res.ok) return await res.json();
-    } catch (e) { /* ignore */ }
-    // 3) 注入兜底
-    if (window.__WORKPET_CONFIG__) return window.__WORKPET_CONFIG__;
-    throw new Error('no config');
+      const raw = await window.__TAURI__.core.invoke('get_config');
+      if (raw) return JSON.parse(raw);
+    } catch (_) {
+      addMsg('未找到 ~/.workpet/config.json，聊天功能暂不可用。', 'err');
+    }
+  }
+  try {
+    const response = await fetch('config.json');
+    if (response.ok) return await response.json();
+  } catch (_) { /* 静态开发模式可没有配置 */ }
+  if (window.__WORKPET_CONFIG__) return window.__WORKPET_CONFIG__;
+  return {};
+}
+
+function applyConfig(value) {
+  cfg = value || {};
+  $('petName').textContent = cfg.petName || 'WorkPet';
+  titleEl.textContent = cfg.group || cfg.env || '本地桌宠';
+  if (cfg.connecterBaseUrl && cfg.token) {
+    client = window.ConnecterClient.createConnecterClient(cfg);
+  }
+  cursor = 0;
+}
+
+async function checkConnection() {
+  if (!client) {
+    connectionBadge.textContent = '仅桌宠模式';
+    return;
+  }
+  try {
+    const health = await client.health();
+    connectionBadge.textContent = '在线';
+    connectionBadge.classList.add('online');
+    addMsg(`已连接 ${health.service || 'connecter-relay'}`, 'sys');
+  } catch (error) {
+    connectionBadge.textContent = '连接失败';
+    setPetState('error');
+    addMsg(`中继连接失败：${error.message}`, 'err');
+  }
+}
+
+async function send() {
+  const text = input.value.trim();
+  if (!text || sending) return;
+  if (!client) {
+    addMsg('请先配置 connecterBaseUrl 和 token。', 'err');
+    showBubble('我已经醒了，但还没有连接到 WorkPanel。');
+    return;
   }
 
-  function applyConfig(c) {
-    cfg = c;
-    client = window.ConnecterClient.createConnecterClient(c);
-    titleEl.textContent = 'WorkPet · ' + (c.group || c.env || '');
+  sending = true;
+  sendBtn.disabled = true;
+  setPetState('thinking');
+  addMsg(text, 'mine', '发送中…');
+  input.value = '';
+
+  const id = `msg_pet_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  try {
+    const response = await client.chat(text, { id });
+    addMsg('已受理', 'sys', [response.messageId, ...(response.runIds || [])].filter(Boolean).join(' · '));
     cursor = 0;
+    (response.runIds || []).forEach(pollRun);
+    setPetState('idle');
+  } catch (error) {
+    addMsg(`发送失败：${error.message}`, 'err');
+    showBubble('消息没有送达，再试一次吧。');
+    setPetState('error');
+  } finally {
+    sending = false;
+    sendBtn.disabled = false;
   }
+}
 
-  async function send() {
-    const text = input.value.trim();
-    if (!text || sending || !client) return;
-    sending = true;
-    sendBtn.disabled = true;
-    setBallState('thinking');
-    addMsg(text, 'mine', '发送中…');
-
-    const id = 'msg_pet_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
+async function pollRun(runId) {
+  if (!client || runPolls[runId]) return;
+  runPolls[runId] = true;
+  const max = cfg.maxRunPolls || 30;
+  for (let count = 0; count < max; count += 1) {
+    await new Promise((resolve) => setTimeout(resolve, cfg.pollIntervalMs || 2000));
     try {
-      const res = await client.chat(text, { id });
-      addMsg(
-        '已受理 ✓',
-        'sys',
-        'messageId ' + (res.messageId || '') + (res.runIds && res.runIds.length ? ' · runId ' + res.runIds[0] : '')
-      );
-      cursor = 0; // 重拉回显
-      (res.runIds || []).forEach(pollRun);
-      setBallState('idle');
-    } catch (e) {
-      addMsg('发送失败：' + e.message, 'err');
-      setBallState('error');
-    } finally {
-      sending = false;
-      sendBtn.disabled = false;
-      input.value = '';
-    }
-  }
-
-  async function pollRun(runId) {
-    if (!client || runPolls[runId]) return;
-    runPolls[runId] = 1;
-    let n = 0;
-    const max = cfg.maxRunPolls || 30;
-    while (n < max) {
-      await new Promise((r) => setTimeout(r, cfg.pollIntervalMs || 2000));
-      n++;
-      try {
-        const row = await client.runs(runId);
-        if (row && row.status && !['queued', 'running', 'starting'].includes(row.status)) {
-          addMsg('run ' + runId.slice(0, 8) + ' → ' + row.status, 'sys');
-          break;
-        }
-      } catch (e) { /* transient */ }
-    }
-    delete runPolls[runId];
-  }
-
-  async function pollMessages() {
-    if (!client || !panelOpen) return;
-    try {
-      const res = await client.messages(cursor);
-      const items = res.messages || [];
-      for (const m of items) {
-        if (m.id && m.id.startsWith('msg_pet_')) continue; // 自己的上行不回显
-        const content = m.payload && m.payload.content ? m.payload.content : JSON.stringify(m.payload || {});
-        addMsg(content, 'theirs', 'seq ' + m.seq + ' · ' + (m.direction || ''));
+      const row = await client.runs(runId);
+      if (row?.status && !['queued', 'running', 'starting'].includes(row.status)) {
+        addMsg(`run ${runId.slice(0, 8)} → ${row.status}`, 'sys');
+        break;
       }
-      cursor = res.nextCursor || cursor;
-    } catch (e) { /* transient，下轮再试 */ }
+    } catch (_) { /* 短暂失败留给下一轮 */ }
   }
+  delete runPolls[runId];
+}
 
-  async function expand() {
-    panelOpen = true;
-    panel.classList.remove('hidden');
-    const w = tauriWindow();
-    if (w) {
-      await w.setSize({ width: PANEL_SIZE.w, height: PANEL_SIZE.h });
-      await w.setFocus();
+async function pollMessages() {
+  if (!client || !panelOpen) return;
+  try {
+    const response = await client.messages(cursor);
+    for (const message of response.messages || []) {
+      if (message.id?.startsWith('msg_pet_')) continue;
+      const content = message.payload?.content || JSON.stringify(message.payload || {});
+      addMsg(content, 'theirs', `seq ${message.seq} · ${message.direction || ''}`);
+      showBubble(content);
+      setPetState('speaking');
+      setTimeout(() => setPetState('idle'), 1800);
     }
-    cursor = 0;
-    pollTimer = setInterval(pollMessages, cfg.pollIntervalMs || 2000);
-    input.focus();
-  }
+    cursor = response.nextCursor || cursor;
+  } catch (_) { /* 下一轮再试，不打断桌宠 */ }
+}
 
-  async function collapse() {
-    panelOpen = false;
-    panel.classList.add('hidden');
-    if (pollTimer) { clearInterval(pollTimer); pollTimer = null; }
-    const w = tauriWindow();
-    if (w) await w.setSize({ width: BALL_SIZE.w, height: BALL_SIZE.h });
+async function expand() {
+  if (panelOpen) return;
+  panelOpen = true;
+  app.classList.add('is-expanded');
+  panel.classList.remove('is-hidden');
+  $('collapseBtn').classList.remove('is-hidden');
+  $('chatToggle').classList.add('is-hidden');
+  const win = tauriWindow();
+  if (win) {
+    await win.setSize(logicalSize(PANEL_SIZE));
+    await win.setFocus();
   }
+  cursor = 0;
+  clearInterval(pollTimer);
+  pollTimer = setInterval(pollMessages, cfg.pollIntervalMs || 2000);
+  input.focus();
+}
 
-  async function init() {
-    try {
-      applyConfig(await loadConfig());
-      setBallState('idle');
-      addMsg('已连接 ' + cfg.connecterBaseUrl, 'sys');
-      const h = await client.health();
-      addMsg('中继健康 ✓（' + (h.service || 'connecter-relay') + '）', 'sys');
-    } catch (e) {
-      setBallState('error');
-      addMsg('初始化失败：' + e.message, 'err');
+async function collapse() {
+  if (!panelOpen) return;
+  panelOpen = false;
+  app.classList.remove('is-expanded');
+  panel.classList.add('is-hidden');
+  $('collapseBtn').classList.add('is-hidden');
+  $('chatToggle').classList.remove('is-hidden');
+  clearInterval(pollTimer);
+  pollTimer = null;
+  const win = tauriWindow();
+  if (win) await win.setSize(logicalSize(petWindowSize(petScale)));
+}
+
+async function interact() {
+  pet.interact();
+  showBubble(client ? '我在。要一起处理什么？' : 'Live2D 已就绪，连接 WorkPanel 后就能聊天。');
+}
+
+async function init() {
+  const config = await loadConfig();
+  applyConfig(config);
+  petScale = readSavedPetScale(config);
+  await setPetScale(petScale, false);
+  await pet.init(config.live2d);
+  setPetState('idle');
+  await checkConnection();
+
+  $('petHit').addEventListener('click', interact);
+  $('openChatBtn').addEventListener('click', expand);
+  $('chatToggle').addEventListener('click', expand);
+  $('collapseBtn').addEventListener('click', collapse);
+  $('sizeDownBtn').addEventListener('click', () => resizePet(-1));
+  $('sizeUpBtn').addEventListener('click', () => resizePet(1));
+  $('composer').addEventListener('submit', (event) => {
+    event.preventDefault();
+    send();
+  });
+  document.addEventListener('keydown', (event) => {
+    if (!event.ctrlKey || panelOpen) return;
+    if (event.key === '+' || event.key === '=') {
+      event.preventDefault();
+      resizePet(1);
+    } else if (event.key === '-' || event.key === '_') {
+      event.preventDefault();
+      resizePet(-1);
     }
+  });
+}
 
-    ball.addEventListener('click', expand);
-    $('collapseBtn').addEventListener('click', collapse);
-    sendBtn.addEventListener('click', send);
-    input.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') send();
-    });
-  }
-
-  document.addEventListener('DOMContentLoaded', init);
-})();
+document.addEventListener('DOMContentLoaded', init);

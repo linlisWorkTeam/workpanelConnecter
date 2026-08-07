@@ -16,6 +16,17 @@
 | 4 | E2E 验收 E1–E8 + 灰度记录 | ✅ 全部通过（见 `docs/workpet-e2e-checklist.md`、`docs/canary-workpet-relay-2026-08-06.md`） |
 | 5 | 二期：WP 回连/WS/动态注册/多适配器/443 T2 | ⏳ 未开始 |
 
+## 2026-08-07 更新：WorkPet Live2D 改造
+
+> 原 Phase 3 静态猫猫球保留为兼容降级，不再是主视觉。设计见 `docs/workpet-live2d-design.md`。
+
+| 子阶段 | 内容 | 状态 |
+|---|---|---|
+| 3.1-a | Live2D 技术、资源许可、状态映射、窗口与降级设计 | ✅ 完成 |
+| 3.1-b | Live2D 渲染适配层与新桌宠 UI | ✅ 完成 |
+| 3.1-c | 模型资源准备、配置样例与许可 Notice | ✅ 完成 |
+| 3.1-d | 前端测试、Tauri 构建、透明窗口视觉验收 | ✅ 完成（Windows / WebView2） |
+
 ## 角色分工（2026-08-06 更新）
 
 | 角色 | 职责 |
