@@ -5,5 +5,20 @@
   "group": "灰度测试",
   "agent": "Cursor Agent",
   "pollIntervalMs": 2000,
-  "maxRunPolls": 30
+  "maxRunPolls": 30,
+  "ui": {
+    "petScale": 1.0
+  },
+  "live2d": {
+    "modelUrl": "models/hiyori/Hiyori.model3.json",
+    "scale": 1.0,
+    "offsetX": 0,
+    "offsetY": 8,
+    "motions": {
+      "idle": "Idle",
+      "thinking": "Idle",
+      "speaking": "TapBody",
+      "error": "Idle"
+    }
+  }
 }

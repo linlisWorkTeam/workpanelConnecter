@@ -8,7 +8,7 @@
 
 | # | 决策 |
 |---|------|
-| D1 | UI 形态：Clowder/Codex「猫猫球」式悬浮宠（WorkPet） |
+| D1 | UI 形态：透明置顶的 Live2D 悬浮桌宠（WorkPet）；原「猫猫球」仅保留为加载失败时的静态降级 |
 | D2 | MVP 对话：固定绑一个 WP 群的协调/值班 Agent |
 | D3 | WorkPet 跑在用户自己的桌面（Win/macOS） |
 | D4 | **不走 SSH 隧道**；桌宠 ↔ 服务器 **HTTPS** |
@@ -24,6 +24,12 @@
 | D14 | **回显 = 轮询**（2026-08-06 root 确认）：`GET /v1/messages?since=` 游标续拉；WS 二期（系统设计 N2） |
 | D15 | **持久化 = SQLite 落盘（MVP 即做）**（2026-08-06 root 确认）：messages/runs/agent_instances/sessions/delivery_log，WAL，重启可恢复（系统设计 N3） |
 | D16 | **:80 落地方式 = nginx 反代共存（方案 B）**（2026-08-06 root 拍板）：nginx 保留 :80（homepage/WorkPanel 域名共存），`/v1/*` 反代 → Connecter 本机 **:9080**（systemd）；对外仍以 :80 可达，满足 D8「Connecter 占 80」意图；附带收益：免 root 绑 80/setcap；T2 时 443 反代同路径 |
+| D17 | **WorkPet 渲染 = Live2D Cubism + WebGL**（2026-08-07）：渲染层运行在 Tauri WebView 中，与 Connecter SDK 解耦 |
+| D18 | **状态驱动动作**：`idle/thinking/speaking/error` 由 UI 状态控制器映射到模型动作；动作缺失自动回退 Idle |
+| D19 | **本地模型包 + 可配置入口**：模型从应用资源加载，`live2d.modelUrl` 可替换为已授权模型；不默认加载远程模型 |
+| D20 | **许可边界**：Cubism Core、Framework 和模型分别遵守对应许可；发布主体在分发前完成 Live2D SDK 与模型授权检查 |
+| D21 | **渐进降级**：WebGL、Core 或模型加载失败时显示静态 SVG，聊天主链路仍可用 |
+| D22 | **窗口形态**：收起态默认 300×420（可调 75%～150%）、展开态 440×680；透明无边框置顶，独立拖拽柄，不再使用全窗口拖拽区 |
 
 ## 2. 目标拓扑
 
@@ -45,7 +51,7 @@
 
 | 组件 | 位置 | 职责 |
 |------|------|------|
-| **WorkPet** | 用户桌面 | 猫猫球 UI、输入输出、本地配置（Connecter URL + 默认 env/群/Agent） |
+| **WorkPet** | 用户桌面 | Live2D 角色、输入输出、本地配置（Connecter URL + 默认 env/群/Agent + 模型配置） |
 | **Connecter 中继** | 服务器 | HTTPS API：鉴权、选 WP 环境、dispatch、查询 run/消息摘要、调度日志 |
 | **WorkPanel** | 服务器（多实例） | 真正的群与 Agent 运行时；被 Connecter 调用，也可主动回调/上报到 Connecter（若需要） |
 
@@ -125,14 +131,15 @@ WorkPanel ─► http(s)://<server>:80/   ─┴► Connecter 中继
 
 WorkPanel → Connecter：用于跨实例协同时的登记/回调（阶段后置）；MVP 可只做 **WorkPet → Connecter → WP**。
 
-## 6. WorkPet MVP（猫猫球）
+## 6. WorkPet Live2D 桌宠
 
-1. 悬浮球 + 点击展开聊天。  
-2. 配置：Connecter base URL、token、默认 `env=canary`、群、Agent。  
+1. 收起态显示完整 Live2D 角色；点击角色触发动作，点击聊天按钮展开聊天。  
+2. 配置：Connecter base URL、token、默认 `env=canary`、群、Agent，以及可选 Live2D 模型路径/缩放/位置。  
 3. 发送走 `POST /v1/chat`；先显示「已受理」；轮询 run/消息做简易回显。  
-4. 皮肤/走动：参考 Clowder F229 的投影层，**一期可用静态图+少量状态**（idle/thinking/error）。
+4. `idle/thinking/speaking/error` 驱动模型动作与 UI 状态；模型不含对应动作时回退 Idle。  
+5. WebGL、Cubism Core 或模型资源失败时自动显示静态 SVG，不阻断聊天。  
 
-平台：Win/macOS；壳 **Tauri 2**（首选）或 Electron。
+平台：Win/macOS；壳固定为 **Tauri 2**。详细设计与验收见 `workpet-live2d-design.md`。
 
 ## 7. 明确不做（本期）
 
@@ -151,6 +158,9 @@ WorkPanel → Connecter：用于跨实例协同时的登记/回调（阶段后�
 | 暴露面 | 仅 HTTPS、鉴权、限流；不把 WP 管理端口裸奔到公网 |
 | 与「纯 CLI」叙事变化 | 文档改为「CLI + 中继服务」；GUI 只在 WorkPet |
 | Agent 异步 | 受理≠完成；需 runs 回读协议 |
+| Live2D 资源许可混淆 | Core、Framework、样例/自有模型分别记录来源和许可；发布前由发布主体复核 |
+| WebView/GPU 差异 | WebGL 能力检测 + SVG 降级；在 Windows WebView2 与 macOS WebKit 分别验收 |
+| 模型动作命名不一致 | 语义状态到动作组的配置映射；缺失时回退 Idle |
 
 ## 9. 代决结论与下一步
 
