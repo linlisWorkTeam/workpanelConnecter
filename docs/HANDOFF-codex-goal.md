@@ -1,47 +1,38 @@
 # HANDOFF · Connecter 实现交接
 
 > 工作目录：`/AI/WorkPanelConnecter`  
-> 更新：2026-08-06
+> 更新：2026-08-07（进度核对）
 
 ## 当前 Owner
 
 | 角色 | 状态 |
 |------|------|
-| **cs** | **实现中**（codex 搁置）；Phase 0–1 已完成 |
-| **codex** | **搁置** — 工具调用通道故障（三次 turn 零执行）；恢复条件：至少一次真实命令执行成功后再评估交还 |
+| **cs** | MVP 主路径已落地；后续按需迭代 |
+| **codex** | **搁置**（工具调用通道故障）；恢复条件：至少一次真实命令执行成功 |
 
 ## Goal
 
-按实现计划落地 Connecter `:80` HTTP 中继 + 同仓 WorkPet 猫猫球 MVP（WorkPet → Connecter → WP canary）。
+Connecter `:80` HTTP 中继 + 同仓 WorkPet 猫猫球 MVP（WorkPet → Connecter → WP canary）。
 
-## 必读
+## 进度（相对 plan）
 
-1. `docs/workpet-connecter-design.md`（D1–D12）  
-2. `docs/superpowers/plans/2026-08-06-workpet-connecter-relay.md`  
-3. 群公告：多 WorkPanel 交互；Connecter **只中继/调度，不做业务**
+| Phase | 内容 | 状态 | 证据 |
+|-------|------|------|------|
+| 0–1 | 中继核 + 门禁 | ✅ | `4b29ca9` |
+| 1.5 | SQLite / 配置 pets / 轮询 / 幂等 | ✅ | 同上 |
+| 2 | systemd + nginx :80 | ✅ | `fb6c49d` |
+| 3 | WorkPet 猫猫球（Tauri） | ✅ | `ac17952` |
+| 4 | E2E E1–E8 + 灰度记录 | ✅ | `f7db1bc` · `docs/workpet-e2e-checklist.md` |
+| 5（二期） | WP→Connecter、WS、动态注册、流式… | ⏳ 未做 | plan Phase 5 |
 
-## 执行约束
+**HEAD：** `f7db1bc` — Phase 4 E2E 全绿 + canary 记录（2026-08-06）
 
-- 默认 `env=canary`；禁止桌宠默认 prod；禁止 WP promote/freeze 生产  
-- 开发中继 `CONNECTER_RELAY_PORT=9080`；生产占 80  
-- 保留 `npm test`；新增 `npm run test:relay`  
-- WP→Connecter、T2 443、流式 = Phase 5 二期  
+## 约束（仍有效）
 
-## 进度
+- 默认 canary；禁默认 prod；禁 WP promote  
+- 开发 `9080` / 生产经 :80（见 `deploy/`）  
+- 门禁：`npm test` · `npm run test:relay` ·（有 GUI 时）WorkPet  
 
-- [x] 设计 + plan + 首 commit docs（`1b19b45`）  
-- [x] Phase 0–1 中继 + `RELAY_GATE_OK`  
-- [x] **Phase 1.5** SQLite + 配置 pets + 轮询回显 + 幂等/死信/revoke（**cs · 2026-08-06**）  
-- [ ] Phase 2 systemd  
-- [ ] Phase 3 WorkPet  
-- [ ] Phase 4 E2E  
+## 下一步
 
-### Phase 1.5 简报
-
-- `node:sqlite` WAL · `data/connector.db`；`relay.json.pets` → `agent_instances`  
-- API：`GET /v1/messages?since=`、`POST /v1/session/revoke`、`GET /v1/instances`  
-- 门禁：`npm run test:relay` → `RELAY_GATE_OK`（canary 实跑 + 幂等 + down ack + dead + revoke）  
-
-## 变更日志
-
-- 2026-08-06：发起 @codex Goal；随后通道故障，root 确认不再调用 codex → **cs 接手**；双写暂停解除  
+统一见 **`docs/NEXT-DEV-PATH.md`**（P0 收口 → P1 443 → P2 WP 回连）。本 HANDOFF 只记 Owner/MVP 进度。

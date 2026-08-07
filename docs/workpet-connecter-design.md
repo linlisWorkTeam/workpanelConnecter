@@ -162,20 +162,8 @@ WorkPanel → Connecter：用于跨实例协同时的登记/回调（阶段后�
 | WebView/GPU 差异 | WebGL 能力检测 + SVG 降级；在 Windows WebView2 与 macOS WebKit 分别验收 |
 | 模型动作命名不一致 | 语义状态到动作组的配置映射；缺失时回退 Idle |
 
-## 9. 代决结论与下一步
+## 9. 结论与现状（2026-08-07）
 
-**cs 分析代决（D10–D12）理由摘要**
+D10–D16 / N1–N3 已落地为运行中的 MVP（Phase 0–4）。  
 
-1. **MVP 单向 Pet→Connecter→WP**：你今晚要的是桌宠远程聊；WP 回连是多实例协同增强，后置不挡主路径。  
-2. **TLS = T1 然后 T2**：占 80 与「简单中继」一致；加密放到外层，避免中继变证书怪兽。  
-3. **同仓 `apps/workpet`**：契约与中继同版本，少一个仓的交接成本。
-
-**设计稿视为可进实现计划**（若你次日否决 D10–D12，先改文档再写码）。
-
-建议下次开工顺序：
-
-1. Connecter HTTPS→改为 **:80 HTTP 中继 daemon**（`POST /v1/chat` 等）+ 路由 canary/prod  
-2. 门禁：中继 → 真实 `:8081`（沿用现有 workpanel 适配）  
-3. `apps/workpet` 最小猫猫球（固定 canary 群）打中继  
-
-**本文通过前若无人异议，下轮可直接写 implementation plan；本回合不写业务代码。**
+**下一步**不在本文重复展开 → 统一见 **`docs/NEXT-DEV-PATH.md`**（P0 收口 → P1 公网硬化 → P2 多 WP 回连/全文回显 → P3 体验扩展）。

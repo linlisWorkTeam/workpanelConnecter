@@ -1,5 +1,8 @@
 # WorkPet × Connecter 中继 Implementation Plan
 
+> **Status (2026-08-07):** Phase **0–4 已完成**（HEAD `f7db1bc`）。Phase **5 未开始** → 见 `docs/NEXT-DEV-PATH.md`。  
+> 下方 Task 勾选为历史执行清单；以 ROADMAP / NEXT / E2E 清单为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 落地稳定 Connecter HTTP 中继（`:80`）+ 同仓 WorkPet 猫猫球 MVP，使桌宠经中继调度到 WorkPanel canary，不直连 WP、不走 SSH。

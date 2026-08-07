@@ -147,16 +147,16 @@ MVP 持久化策略：`messages` / `runs` / `agent_instances` / `sessions` **落
 | 安全 | token 鉴权 + 默认 canary + prod 显式开关 | mTLS / 吊销 UI |
 | 适配器 | workpanel（已有） | workpad 等 |
 
-### 5.2 落地顺序（衔接 cs 已完成的 Phase 0–1）
+### 5.2 落地顺序
 
-| 阶段 | 内容 | 门禁 |
+| 阶段 | 内容 | 状态 |
 |---|---|---|
-| Phase 0–1 ✅（cs 已完成） | 中继核：router/auth/handlers、`test:relay`、`RELAY_GATE_OK` | `npm test` / `test:relay` |
-| **Phase 1.5（新增，本设计）** | 注册/映射落库（agent_instances/sessions/messages 表）+ `GET /v1/messages` 回显 + 幂等去重 | `test:relay` 扩展 |
-| Phase 2 | systemd 占 :80（+可选 443→80） | 端口/健康检查 |
-| Phase 3 | `apps/workpet` Tauri 猫猫球：调 `/v1/chat` + 轮询回显 | 桌面冒烟（手动） |
-| Phase 4 | E1–E7 联调验收 + 灰度记录 | canary gate |
-| Phase 5（二期） | WS、WP 回调、动态注册、多适配器 | — |
+| Phase 0–1 | 中继核 | ✅ |
+| Phase 1.5 | 注册/落库/回显/幂等 | ✅ |
+| Phase 2 | systemd + nginx :80 | ✅ |
+| Phase 3 | WorkPet Tauri | ✅（桌面编包留本机） |
+| Phase 4 | E1–E8 | ✅ |
+| Phase 5 | 见 `docs/NEXT-DEV-PATH.md`（443 / WP 回连 / 全文回显 / WS…） | ⏳ |
 
 ### 5.3 并发与可靠性要点
 

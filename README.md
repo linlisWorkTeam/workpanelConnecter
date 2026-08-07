@@ -1,52 +1,72 @@
 # WorkPanelConnecter
 
-多 WorkPanel 协同的 **调度中继 + CLI**。只做调度，不做业务。桌宠 UI 在同仓 **WorkPet**（独立应用）。
+多 WorkPanel 协同的 **调度中继 + CLI**。只做调度，不做业务。桌宠 UI：同仓 **WorkPet**。
+
+**MVP（Phase 0–4）已完成** · 下一步见 [NEXT-DEV-PATH](docs/NEXT-DEV-PATH.md)
+
+## 启动方式
+
+### 1. Connecter CLI（交互式命令行）
+
+```bash
+npm start
+```
+
+启动交互式 REPL，支持 `/chat`、`/show-server`、`/help` 等命令。
+
+### 2. Connecter Relay（HTTP 中继服务器）
+
+```bash
+# 先创建配置文件
+cp config/relay.example.json config/relay.json
+
+# 然后启动（开发模式，端口 9080）
+CONNECTER_RELAY_PORT=9080 CONNECTER_RELAY_CONFIG=config/relay.json npm run relay
+```
+
+生产经 nginx `:80` → systemd `:9080`，见 [deploy/README.md](deploy/README.md)。
+
+### 3. WorkPet 桌面应用（Tauri 2）
+
+```bash
+cd apps/workpet
+npm install
+npm run dev          # 开发模式（tauri dev）
+```
+
+仅调 UI 时，可用浏览器直接打开 `apps/workpet/ui/index.html`（或本地静态服务）；完整桌宠窗体仍需 `npm run dev`。
+
+桌面配置：复制 `apps/workpet/config.example.json` → `~/.workpet/config.json`，详见 [apps/workpet/README.md](apps/workpet/README.md)。
+
+### 4. 测试
+
+```bash
+npm test                # 冒烟测试（mock）
+npm run test:canary     # 直连 WP 灰度 :8081
+npm run test:relay      # 中继网关门禁
+```
+
+可选：`npm run test:e2e-resume`（杀进程续投）、`npm run test:workpet`。
+
+## 前置依赖
+
+- **Node.js ≥ 18**（跑 CLI / 测试）；**Relay 建议 Node ≥ 22.5**（使用 Node 内置 `node:sqlite`，**不是** `better-sqlite3`）
+- WorkPet 桌面应用还需要 **Rust 工具链** 和 **Tauri 2** 系统依赖（Windows：VS Build Tools + WebView2；macOS：Xcode CLI Tools）
+- 联调真实调度需 WorkPanel **canary**（默认 `:8081`）可达；默认禁止打 prod
 
 ## 文档
 
 | 文档 | 说明 |
 |------|------|
-| [交接 / Owner](docs/HANDOFF-codex-goal.md) | 当前 **cs** 实现；codex 搁置 |
-| [实现计划](docs/superpowers/plans/2026-08-06-workpet-connecter-relay.md) | Phase 0–5 |
-| [WorkPet 设计](docs/workpet-connecter-design.md) | D1–D12 |
-| [调度边界](docs/scheduling-boundaries.md) | In/Out |
-| [Roadmap](docs/ROADMAP.md) | 阶段总览 |
+| [下一步路径](docs/NEXT-DEV-PATH.md) | P0–P3 开发顺序 |
+| [Relay API 契约](docs/api-relay.md) | `/v1/*` 冻结契约 |
+| [运维手册](deploy/README.md) | 备份 / token / systemd |
+| [Roadmap](docs/ROADMAP.md) | Phase 0–5 状态 |
+| [系统设计](docs/workconnector-system-design.md) | N1–N3 规范 |
+| [E2E 清单](docs/workpet-e2e-checklist.md) | E1–E8 |
 
-## 中继（Phase 1 + 1.5）
+## 约定
 
-```bash
-cp config/relay.example.json config/relay.json   # 含 pets[] 配置式注册；已 gitignore
-# 开发（免 root）：
-CONNECTER_RELAY_PORT=9080 CONNECTER_RELAY_CONFIG=config/relay.json npm run relay
-
-# 探活
-curl -sS http://127.0.0.1:9080/v1/health
-
-# Pet 上行（Bearer = pets[].token）
-curl -sS -H "Authorization: Bearer dev-pet-token-change-me" \
-  -H 'content-type: application/json' \
-  -d '{"id":"msg_demo_1","group":"灰度测试","prompt":"hello"}' \
-  http://127.0.0.1:9080/v1/chat
-
-# 轮询回显
-curl -sS -H "Authorization: Bearer dev-pet-token-change-me" \
-  'http://127.0.0.1:9080/v1/messages?since=0&group=%E7%81%B0%E5%BA%A6%E6%B5%8B%E8%AF%95'
-```
-
-生产听 **:80**（Phase 2）。默认 `env=canary` → WP `:8081`。SQLite：`data/connector.db`（WAL）。
-
-门禁：`npm test` · `npm run test:relay`（含幂等/回显/死信/revoke）· `npm run test:canary`
-
-## CLI / 门禁
-
-```bash
-npm test              # mock 自包含
-npm run test:canary   # 直连 WP 灰度（禁 :8080）
-npm run test:relay    # 中继门禁（开发 9080 → canary）
-```
-
-## 开发约定
-
-- 代码写在仓库根 / `src/` / `bin/` / `apps/`；勿写入 `.linlis/agents/`
-- 实现 Owner：**cs**（codex 通道恢复前）
-- 勿 WP promote；勿默认打 prod
+- 默认 **canary**；禁止默认 prod；禁止 WP promote  
+- 代码在仓库根 / `src/` / `apps/` / `deploy/`；勿写入 `.linlis/agents/`  
+- `config/relay.json` 含 token，已 gitignore，勿提交  
