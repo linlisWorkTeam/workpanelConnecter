@@ -46,3 +46,4 @@ tmp/
 .cache/
 .codex-tmp-cubism/
 apps/workpet/artifacts/
+config/relay.json.bak*
