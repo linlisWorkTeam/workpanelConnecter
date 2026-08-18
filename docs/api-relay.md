@@ -44,7 +44,7 @@ ops 访问 `/v1/groups*` → **403** `{ "error": "pet token required" }`（与 `
 
 ### 1.3 群可见范围（G11）
 
-pet token 对 `/v1/groups*` 与扩展后的 `POST /v1/chat` 的可读可写范围 = **该 env 上门面账号在 WorkPanel 可见的全部群**，**不限于** `relay.json` → `pets[].groups` 绑定行。`agent_instances` 仍用于默认值班 Agent 解析与 ack 路由，**不再**作为「能否进入该群」的门槛。
+pet token 对 `/v1/groups*` 与扩展后的 `POST /v1/chat` 的可读可写范围 = **该 env 上门面账号在 WorkPanel 可见的全部群**，**不限于** `relay.json` → `pets[].groups` 绑定行。`agent_instances` 仍用于 ack 路由；值班 Agent 由群成员 `@` / 请求体 `agent` / `defaults.coordinatorAgentName` / 群内第一个 `kind=agent && isActive` 解析，**不以** `agent_instances` 行作为协调者来源。
 
 ---
 
@@ -119,6 +119,7 @@ WP 若无 `unreadCount` 则字段省略。
 ```
 
 `online`：`kind=agent` 时等于 `isActive`；`kind=user` 时 `id` 或 `userId` ∈ presence `onlineUserIds`。presence 失败则用户 `online` 全为 `false`，仍返回成员列表。  
+`coordinatorAgent`：与 chat 相同的 isActive 规则——`defaults.coordinatorAgentName` 须在群内且 `kind=agent && isActive`，否则取第一个活跃 agent。  
 群不存在或不在门面可见范围 → **404**。  
 **502** `WP_GROUPS_FAILED` · **403** ops / `PROD_FORBIDDEN`。
 
@@ -151,6 +152,7 @@ WP 若无 `unreadCount` 则字段省略。
 | `petDisplayName` | 正文含戳记行 `【WorkPet:{petName}】` 时为戳记名，否则 `null` |
 | `contentDisplay` | 去掉戳记行后的正文，供桌宠渲染 |
 
+群不存在或不在门面可见范围 → **404**。  
 **502** `WP_GROUPS_FAILED` · **403** ops / `PROD_FORBIDDEN`。
 
 > 此接口是 WorkPet 展开面板的主 transcript；**不是** G10 ack 轮询（ack 仍走 `GET /v1/messages`）。

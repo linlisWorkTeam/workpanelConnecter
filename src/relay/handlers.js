@@ -132,6 +132,9 @@ export function createHandlers({ config }) {
       if (gate.error) return gate.error;
       const listed = await wpListGroupMessages(gate.server, id, { limit: query.limit });
       if (!listed.ok) {
+        if (listed.status === 404) {
+          return { status: 404, body: { error: listed.error || 'group not found' } };
+        }
         return {
           status: 502,
           body: { error: listed.error || 'wp messages failed', code: 'WP_GROUPS_FAILED' },

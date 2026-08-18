@@ -39,6 +39,6 @@ export function parseAgentMention(prompt, members) {
   if (!hit) {
     return { ok: false, agent: null, rest: text, error: 'unknown @mention', code: 'UNKNOWN_MENTION' };
   }
-  const rest = after.slice(hit.displayName.length).trim();
+  const rest = (text.slice(0, at) + after.slice(hit.displayName.length)).trim();
   return { ok: true, agent: hit, rest };
 }

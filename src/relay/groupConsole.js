@@ -45,7 +45,7 @@ export function toGroupMember(member, onlineUserIds) {
 
 export function coordinatorAgentName(members, defaults = {}) {
   const name = defaults.coordinatorAgentName;
-  if (name && (members || []).some((m) => m.kind === 'agent' && m.displayName === name)) {
+  if (name && (members || []).some((m) => m.kind === 'agent' && m.isActive && m.displayName === name)) {
     return name;
   }
   const first = (members || []).find((m) => m.kind === 'agent' && m.isActive);

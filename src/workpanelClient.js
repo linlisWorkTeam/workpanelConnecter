@@ -107,7 +107,7 @@ export async function wpListGroupMessages(server, groupId, { limit = 50, timeout
     `${baseOf(server)}/api/groups/${encodeURIComponent(groupId)}/messages?${q}`,
     { token, timeoutMs }
   );
-  if (!res.ok) return { ok: false, messages: [], error: `wp messages HTTP ${res.status}` };
+  if (!res.ok) return { ok: false, status: res.status, messages: [], error: `wp messages HTTP ${res.status}` };
   const messages = Array.isArray(res.json?.messages) ? res.json.messages : [];
   return { ok: true, messages, error: null };
 }

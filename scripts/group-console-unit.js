@@ -18,7 +18,7 @@ import {
   dispatchWorkPanel,
 } from '../src/workpanelClient.js';
 import { createHandlers } from '../src/relay/handlers.js';
-import { resolveChatTarget } from '../src/relay/groupConsole.js';
+import { coordinatorAgentName, resolveChatTarget } from '../src/relay/groupConsole.js';
 import { bootstrapRelay, closeDb } from '../src/relay/server.js';
 
 const members = [
@@ -45,6 +45,20 @@ const members = [
   assert.equal(none.ok, true);
   assert.equal(none.agent, null);
   assert.equal(none.rest, '只是一句');
+}
+
+{
+  const caret = parseAgentMention('修一下@Cursor Agent ', members);
+  assert.equal(caret.ok, true);
+  assert.equal(caret.agent.id, 'a1');
+  assert.equal(caret.rest, '修一下');
+}
+
+{
+  const mid = parseAgentMention('修一下@Cursor Agent', members);
+  assert.equal(mid.ok, true);
+  assert.equal(mid.agent.id, 'a1');
+  assert.equal(mid.rest, '修一下');
 }
 
 {
@@ -124,6 +138,25 @@ const members = [
   assert.equal(none.error, 'no coordinator agent in group');
 }
 
+{
+  const inactiveNamed = [
+    { id: 'a1', kind: 'agent', displayName: 'Cursor Agent', isActive: false },
+    { id: 'a2', kind: 'agent', displayName: 'Cursor', isActive: true },
+  ];
+  assert.equal(
+    coordinatorAgentName(inactiveNamed, { coordinatorAgentName: 'Cursor Agent' }),
+    'Cursor'
+  );
+  const chat = resolveChatTarget({
+    prompt: '只是一句',
+    members: inactiveNamed,
+    requestedAgent: null,
+    defaults: { coordinatorAgentName: 'Cursor Agent' },
+  });
+  assert.equal(chat.ok, true);
+  assert.equal(chat.agent.displayName, 'Cursor');
+}
+
 console.log('GROUP_CONSOLE_UNIT_OK parsers');
 
 async function withMock(fn) {
@@ -177,6 +210,10 @@ await withMock(async (base) => {
   const messages = await wpListGroupMessages(server, 'local-group-1', { limit: 20 });
   assert.equal(messages.ok, true);
   assert.ok(messages.messages.length >= 1);
+
+  const missingMsgs = await wpListGroupMessages(server, 'no-such-group');
+  assert.equal(missingMsgs.ok, false);
+  assert.equal(missingMsgs.status, 404);
 
   const team = {
     id: 'local-group-1',
@@ -237,6 +274,9 @@ await withMock(async () => {
   assert.equal(listed.body.messages[0].contentDisplay, 'hello from group');
   assert.equal(listed.body.messages[0].petDisplayName, null);
   assert.equal(listed.body.messages[1].petDisplayName, '林的Pet');
+
+  const missing = await handlers.groupMessages(auth, 'no-such-group', { env: 'canary' });
+  assert.equal(missing.status, 404);
 });
 
 const ops = await createHandlers({ config: { backends: { canary: { baseUrl: 'http://127.0.0.1:18081' } } } })

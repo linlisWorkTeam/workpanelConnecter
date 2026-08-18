@@ -9,6 +9,7 @@ import {
 } from './petConfig.js';
 import {
   isStaleGroupFetch,
+  matchesOptimisticBubble,
   renderMessageAuthor,
   shouldStartConsolePolling,
 } from './petStamp.js';
@@ -173,9 +174,8 @@ function addGroupMsg(msg) {
 }
 
 function removeMatchingOptimistic(msg) {
-  const content = msg.contentDisplay != null ? String(msg.contentDisplay) : '';
   for (const [id, pending] of pendingOptimistic) {
-    if (pending.text !== content) continue;
+    if (!matchesOptimisticBubble(pending.text, msg)) continue;
     if (msg.petDisplayName && msg.petDisplayName !== cfg.petName) continue;
     pending.el.remove();
     pendingOptimistic.delete(id);

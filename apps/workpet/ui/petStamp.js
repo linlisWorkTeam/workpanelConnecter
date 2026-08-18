@@ -12,6 +12,53 @@ export function stripPetStamp(content) {
   };
 }
 
+/** Strip a leading `@Agent` line (WP transcript) and any pet stamp. */
+function transcriptBody(text) {
+  let s = stripPetStamp(String(text || '')).contentDisplay.trim();
+  if (s.startsWith('@')) {
+    const nl = s.indexOf('\n');
+    if (nl !== -1) s = s.slice(nl + 1).trim();
+  }
+  return stripPetStamp(s).contentDisplay.trim();
+}
+
+function leadingMentionName(text) {
+  const s = stripPetStamp(String(text || '')).contentDisplay.trim();
+  if (!s.startsWith('@')) return '';
+  const nl = s.indexOf('\n');
+  if (nl === -1) return '';
+  return s.slice(1, nl).trim();
+}
+
+function stripMentionToken(text, name) {
+  if (!name) return String(text || '').trim();
+  const escaped = name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return String(text || '')
+    .replace(new RegExp(`@${escaped}\\s*`, 'g'), '')
+    .trim();
+}
+
+/**
+ * True when a local optimistic composer bubble is the same user message
+ * as a WP transcript row (`contentDisplay` is typically `@Agent\n{rest}`).
+ */
+export function matchesOptimisticBubble(pendingText, msg) {
+  const pending = String(pendingText || '').trim();
+  if (!pending) return false;
+  const raw =
+    msg?.contentDisplay != null
+      ? String(msg.contentDisplay)
+      : stripPetStamp(msg?.content || '').contentDisplay;
+  const display = String(raw || '').trim();
+  if (pending === display) return true;
+  const source = display || String(msg?.content || '');
+  const msgBody = transcriptBody(source);
+  if (pending === msgBody) return true;
+  if (transcriptBody(pending) === msgBody && msgBody !== '') return true;
+  const name = leadingMentionName(source);
+  return Boolean(name) && stripMentionToken(pending, name) === msgBody;
+}
+
 /**
  * Longest agent displayName that the typed prefix can complete toward
  * (displayName starts with typed text).

@@ -48,14 +48,21 @@
     }
 
     function buildChatBody(prompt, o = {}) {
-      return {
+      const body = {
         id: o.id,
         prompt,
         env: o.env || defaults.env,
         group: o.group || defaults.group,
-        agent: o.agent || defaults.agent,
         petName: o.petName || defaults.petName,
       };
+      const passedGroup = o.group != null && String(o.group).trim() !== '';
+      const passedAgent = o.agent != null && String(o.agent).trim() !== '';
+      if (passedGroup) {
+        if (passedAgent) body.agent = o.agent;
+      } else {
+        body.agent = o.agent || defaults.agent;
+      }
+      return body;
     }
 
     return {

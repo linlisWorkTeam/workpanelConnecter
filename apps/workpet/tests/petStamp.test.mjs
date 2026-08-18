@@ -7,6 +7,7 @@ import { fileURLToPath } from 'node:url';
 import {
   isStaleGroupFetch,
   matchAgentPrefix,
+  matchesOptimisticBubble,
   renderMessageAuthor,
   shouldStartConsolePolling,
   stripPetStamp,
@@ -52,6 +53,20 @@ test('stripPetStamp leaves unstamped content alone', () => {
   });
 });
 
+test('optimistic bubble matches stamped WP transcript as one bubble', () => {
+  const content = '@Cursor Agent\n【WorkPet:林的Pet】\n修一下';
+  const stripped = stripPetStamp(content);
+  assert.equal(stripped.contentDisplay, '@Cursor Agent\n修一下');
+  assert.equal(
+    matchesOptimisticBubble('修一下', { content, contentDisplay: stripped.contentDisplay }),
+    true
+  );
+  assert.equal(matchesOptimisticBubble('修一下', { content }), true);
+  assert.equal(matchesOptimisticBubble('修一下@Cursor Agent ', { content }), true);
+  assert.equal(matchesOptimisticBubble('@Cursor Agent 修一下', { content }), true);
+  assert.equal(matchesOptimisticBubble('别的话', { content }), false);
+});
+
 test('renderMessageAuthor prefers petDisplayName then senderDisplayName', () => {
   assert.equal(
     renderMessageAuthor({ petDisplayName: '林的Pet', senderDisplayName: 'Local User' }, '林的Pet'),
@@ -83,6 +98,37 @@ test('chat body includes petName from options or cfg', () => {
     petName: 'optPet',
   });
   assert.equal(buildChatBody('hi', {}).petName, 'cfgPet');
+});
+
+test('console chat with group omits cfg.agent so coordinator can run', () => {
+  const { createConnecterClient } = loadSdk();
+  const { buildChatBody } = createConnecterClient({
+    connecterBaseUrl: 'http://127.0.0.1:9',
+    token: 't',
+    petName: 'cfgPet',
+    env: 'canary',
+    group: 'default-group',
+    agent: 'cfgAgent',
+  });
+  const consoleSend = JSON.parse(
+    JSON.stringify(buildChatBody('hi', { group: 'g1', petName: 'optPet', id: 'm1' }))
+  );
+  assert.deepEqual(consoleSend, {
+    id: 'm1',
+    prompt: 'hi',
+    env: 'canary',
+    group: 'g1',
+    petName: 'optPet',
+  });
+  assert.equal('agent' in consoleSend, false);
+
+  const withAgent = JSON.parse(
+    JSON.stringify(buildChatBody('hi', { group: 'g1', agent: 'explicit', id: 'm1' }))
+  );
+  assert.equal(withAgent.agent, 'explicit');
+
+  const legacy = JSON.parse(JSON.stringify(buildChatBody('hi', { id: 'm1' })));
+  assert.equal(legacy.agent, 'cfgAgent');
 });
 
 test('shouldStartConsolePolling requires open panel and no pause', () => {
