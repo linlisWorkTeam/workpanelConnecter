@@ -40,6 +40,8 @@
 | P2.1 | **WP → Connecter** 登记/回调 | 二期协议：WP 主动推送或 webhook；Connecter 写入 down messages | 设计评审 + 门禁 |
 | P2.2 | 跨实例路由硬化 | A 群 pet → B 环境 WP；审计日志 | E2E 双 backend |
 | P2.3 | 真实 Agent 全文回显 | 现 down 多为 delivery ack；需订阅 WP runs/消息 | 轮询可见回复摘要 |
+| P2.4 | **WorkPet 迷你群控制台** | `/v1/groups*` + chat `@`/`petName`；展开面板读 WP 群 transcript | `docs/api-relay.md` 2026-08-19 冻结 · **✅** |
+| P2.5 | **WP Pet 成员身份 + WorkPet 登录** | 群内真实发送者为 Pet（非门面代发）；见 design §8 | WP ask · **⏳ 待实现**（非本期） |
 
 ### P3 — Phase 5c：体验与扩展（可并行、可砍）
 
@@ -61,9 +63,14 @@ P0.1 本机桌宠冒烟 ─┬─► P0.2 API 文档 ─► P0.3 运维
                             │
                             ▼
                      P2.3 全文回显 → P3 按需
+                            │
+              （并行已交付）P2.4 群控制台 ✅
+                            │
+                            ▼
+                     P2.5 WP Pet 身份（需 WP 配合，待实现）
 ```
 
-**默认建议下一刀：用户完成本机 P0.1；服务端可开 P1.1（443）或进入 P2 设计（WP 回连）。P0.2/P0.3 已交付。**
+**默认建议下一刀：用户完成本机 P0.1；服务端可开 P1.1（443）或进入 P2 设计（WP 回连）。P0.2/P0.3/P2.4 已交付；P2.5 为 WP ask，非本期。**
 
 **2026-08-10 战略更新**：内存瓶颈与「本机跑 Agent / Raft」讨论 → 演进答复见 **`docs/CONNECTER-EVOLUTION.md`（E1 外置注册优先）**。
 
