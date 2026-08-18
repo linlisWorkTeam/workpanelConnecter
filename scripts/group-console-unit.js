@@ -144,10 +144,16 @@ await withMock(async () => {
   const one = await handlers.group(auth, list.body.groups[0].id, { env: 'canary' });
   assert.equal(one.status, 200);
   assert.equal(typeof one.body.members[0].online, 'boolean');
+
+  const listed = await handlers.groupMessages(auth, 'local-group-1', { env: 'canary', limit: '50' });
+  assert.equal(listed.status, 200);
+  assert.equal(listed.body.messages[0].contentDisplay, 'hello from group');
+  assert.equal(listed.body.messages[0].petDisplayName, null);
+  assert.equal(listed.body.messages[1].petDisplayName, '林的Pet');
 });
 
 const ops = await createHandlers({ config: { backends: { canary: { baseUrl: 'http://127.0.0.1:18081' } } } })
   .groups({ kind: 'ops' }, {});
 assert.equal(ops.status, 403);
 
-console.log('GROUP_CONSOLE_UNIT_OK handlers groups+presence');
+console.log('GROUP_CONSOLE_UNIT_OK handlers groups+presence+messages');

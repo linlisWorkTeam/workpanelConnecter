@@ -143,11 +143,24 @@ export function createRelayServer(options = {}) {
       }
 
       if (req.method === 'GET' && pathname.startsWith('/v1/groups/')) {
-        const rest = decodeURIComponent(pathname.slice('/v1/groups/'.length));
-        if (!rest || rest.includes('/')) {
+        const parts = pathname.slice('/v1/groups/'.length).split('/').map((p) => {
+          try {
+            return decodeURIComponent(p);
+          } catch {
+            return p;
+          }
+        });
+        if (parts.length === 2 && parts[0] && parts[1] === 'messages') {
+          const h = await handlers.groupMessages(auth, parts[0], {
+            env: url.searchParams.get('env'),
+            limit: url.searchParams.get('limit'),
+          });
+          return send(res, h.status, h.body);
+        }
+        if (parts.length !== 1 || !parts[0]) {
           return send(res, 404, { error: 'not found', path: pathname });
         }
-        const h = await handlers.group(auth, rest, {
+        const h = await handlers.group(auth, parts[0], {
           env: url.searchParams.get('env'),
         });
         return send(res, h.status, h.body);

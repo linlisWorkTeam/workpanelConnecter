@@ -110,6 +110,15 @@ const server = http.createServer(async (req, res) => {
           mentionMemberIds: [],
           ts: Date.now(),
         },
+        {
+          id: 'wp_hist_2',
+          senderMemberId: user.id,
+          senderDisplayName: user.displayName,
+          senderKind: 'user',
+          content: '【WorkPet:林的Pet】\nhello stamped',
+          mentionMemberIds: [],
+          ts: Date.now(),
+        },
       ],
     });
   }

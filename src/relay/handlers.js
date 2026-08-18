@@ -4,11 +4,13 @@ import {
   wpListGroups,
   wpGetGroup,
   wpGetPresence,
+  wpListGroupMessages,
 } from '../workpanelClient.js';
 import {
   toGroupListItem,
   toGroupMember,
   coordinatorAgentName,
+  mapWpMessage,
 } from './groupConsole.js';
 import {
   resolveAgentInstance,
@@ -118,6 +120,24 @@ export function createHandlers({ config }) {
           group: { id: got.group?.id, name: got.group?.name },
           members: members.map((m) => toGroupMember(m, onlineUserIds)),
           coordinatorAgent: coordinatorAgentName(members, gate.resolved.defaults),
+        },
+      };
+    },
+
+    async groupMessages(auth, id, query = {}) {
+      const gate = petBackend(auth, query.env);
+      if (gate.error) return gate.error;
+      const listed = await wpListGroupMessages(gate.server, id, { limit: query.limit });
+      if (!listed.ok) {
+        return {
+          status: 502,
+          body: { error: listed.error || 'wp messages failed', code: 'WP_GROUPS_FAILED' },
+        };
+      }
+      return {
+        status: 200,
+        body: {
+          messages: listed.messages.map(mapWpMessage),
         },
       };
     },

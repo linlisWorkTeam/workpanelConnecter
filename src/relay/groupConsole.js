@@ -2,6 +2,23 @@
  * DTOs for GET /v1/groups* (WorkPet mini group console).
  */
 
+import { stripPetStamp } from './petStamp.js';
+
+export function mapWpMessage(row) {
+  const { petDisplayName, contentDisplay } = stripPetStamp(row.content || '');
+  return {
+    id: row.id,
+    ts: row.ts || row.createdAt || null,
+    senderMemberId: row.senderMemberId,
+    senderDisplayName: row.senderDisplayName || null,
+    senderKind: row.senderKind || null,
+    content: row.content,
+    contentDisplay,
+    petDisplayName,
+    mentionMemberIds: row.mentionMemberIds || [],
+  };
+}
+
 export function memberOnline(member, onlineUserIds) {
   if (member.kind === 'agent') return Boolean(member.isActive);
   const ids = new Set(onlineUserIds || []);
