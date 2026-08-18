@@ -48,3 +48,5 @@ tmp/
 apps/workpet/artifacts/
 config/relay.json.bak*
 .playwright-cli/
+.worktrees/
+.superpowers/
