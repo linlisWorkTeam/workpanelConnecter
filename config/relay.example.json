@@ -34,6 +34,22 @@
     "group": "灰度测试",
     "coordinatorAgentName": "Cursor Agent"
   },
+    "runners": [
+      {
+        "agentId": "dsh-dev-1",
+        "token": "dev-runner-token-change-me",
+        "role": "general",
+        "runtime": "local",
+        "bindings": [
+          {
+            "env": "canary",
+            "groupId": "528b36ba-4769-4b4d-9fa8-51e2de132396",
+            "groupName": "灰度测试",
+            "agentName": "DeepSeek"
+          }
+        ]
+      }
+    ],
   "pets": [
     {
       "id": "pet-dev-1",

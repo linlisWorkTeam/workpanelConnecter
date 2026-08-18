@@ -135,8 +135,15 @@ function applyConfig(value) {
   cfg = value || {};
   $('petName').textContent = cfg.petName || 'WorkPet';
   titleEl.textContent = cfg.group || cfg.env || '本地桌宠';
-  if (cfg.connecterBaseUrl && cfg.token) {
-    client = window.ConnecterClient.createConnecterClient(cfg);
+  const createClient = window.ConnecterClient?.createConnecterClient;
+  if (cfg.connecterBaseUrl && cfg.token && createClient) {
+    try {
+      client = createClient(cfg);
+    } catch (error) {
+      addMsg(`中继客户端初始化失败：${error.message}`, 'err');
+    }
+  } else if (cfg.connecterBaseUrl && cfg.token) {
+    addMsg('Connecter SDK 未加载，聊天暂不可用。', 'err');
   }
   cursor = 0;
 }
@@ -261,11 +268,11 @@ async function interact() {
 
 async function init() {
   const config = await loadConfig();
-  applyConfig(config);
   petScale = readSavedPetScale(config);
   await setPetScale(petScale, false);
   await pet.init(config.live2d);
   setPetState('idle');
+  applyConfig(config);
   await checkConnection();
 
   $('petHit').addEventListener('click', interact);

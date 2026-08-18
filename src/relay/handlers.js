@@ -8,6 +8,16 @@ import {
 import { acceptUpMessage, pollMessages } from './messaging.js';
 import { deliverWithRetry } from './delivery.js';
 import { db, getRun, getMessageById } from './db.js';
+import {
+  registerRunner,
+  heartbeatRunner,
+  pollRunnerTasks,
+  submitRunnerTaskResult,
+  listRunnerBindings,
+  findRunnerBinding,
+  enqueueRunnerTask,
+  postRunnerResultToGroup,
+} from './runners.js';
 
 function backendAsServer(backend) {
   return {
@@ -102,6 +112,35 @@ export function createHandlers({ config }) {
             },
           };
         }
+
+          // E1: dsh-bound target -> enqueue outbound runner task instead of WP dispatch
+          const runnerBinding = findRunnerBinding(instance);
+          if (runnerBinding) {
+            const task = await enqueueRunnerTask({
+              runnerId: runnerBinding.runner_id,
+              channelId: runnerBinding.channel_id,
+              env: instance.env,
+              groupId: instance.group_id,
+              groupName: instance.group_name,
+              agentName: instance.agent_name,
+              upMessage: accepted.message,
+              content: String(prompt),
+              context: { source: 'pet-chat' },
+            });
+            return {
+              status: 200,
+              body: {
+                status: 'accepted',
+                env: instance.env,
+                messageId: accepted.envelope.id,
+                seq: accepted.message.seq,
+                runIds: [task.id],
+                group: instance.group_id,
+                coordinatorAgent: instance.agent_name,
+                runner: { agentId: runnerBinding.runner_id, channelId: runnerBinding.channel_id },
+              },
+            };
+          }
 
         const delivered = await deliverWithRetry(config, accepted.message);
         if (!delivered.ok) {
@@ -239,5 +278,42 @@ export function createHandlers({ config }) {
       await revokePetSessions(auth.petId);
       return { status: 200, body: { ok: true, petId: auth.petId, status: 'revoked' } };
     },
+
+      agentRegister(body) {
+        return registerRunner(config, body);
+      },
+
+      agentHeartbeat(auth) {
+        if (auth.kind !== 'runner') {
+          return { status: 403, body: { error: 'runner token required' } };
+        }
+        return { status: 200, body: heartbeatRunner(auth.runner) };
+      },
+
+      agentTasks(auth, { limit }) {
+        if (auth.kind !== 'runner') {
+          return { status: 403, body: { error: 'runner token required' } };
+        }
+        return pollRunnerTasks(auth.runner, { limit });
+      },
+
+      async agentTaskResult(auth, body) {
+        if (auth.kind !== 'runner') {
+          return { status: 403, body: { error: 'runner token required' } };
+        }
+        const r = await submitRunnerTaskResult(config, auth.runner, body);
+        // E2: best-effort write-back into the WP group thread (as the agent)
+        if (r?.status === 200 && r?.body?.status === 'completed') {
+          postRunnerResultToGroup(config, auth.runner, body).catch(() => {});
+        }
+        return r;
+      },
+
+      agentList(auth, { env, group }) {
+        if (auth.kind !== 'ops') {
+          return { status: 403, body: { error: 'ops token required' } };
+        }
+        return { status: 200, body: { agents: listRunnerBindings({ env, group }) } };
+      },
   };
 }

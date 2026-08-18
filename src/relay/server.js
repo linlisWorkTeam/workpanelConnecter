@@ -6,6 +6,7 @@ import { authenticateRequest } from './authPet.js';
 import { createHandlers } from './handlers.js';
 import { openDb, getDbPath, closeDb } from './db.js';
 import { syncConfigPets } from './registry.js';
+import { syncConfigRunners } from './runners.js';
 import { resumePending } from './delivery.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -35,6 +36,26 @@ function send(res, status, body) {
   res.end(raw);
 }
 
+function applyCors(req, res, config) {
+  const configured = config.cors?.origins || config.cors?.allowedOrigins || ['*'];
+  const origins = Array.isArray(configured) ? configured : [configured];
+  const origin = req.headers.origin;
+  const allowAll = origins.includes('*');
+  if (!allowAll && (!origin || !origins.includes(origin))) return;
+
+  res.setHeader(
+    'access-control-allow-origin',
+    allowAll ? origin || '*' : origin
+  );
+  res.setHeader('access-control-allow-methods', 'GET, POST, OPTIONS');
+  res.setHeader(
+    'access-control-allow-headers',
+    'Authorization, Content-Type, Accept'
+  );
+  res.setHeader('access-control-max-age', '86400');
+  if (origin) res.setHeader('vary', 'Origin');
+}
+
 async function readJson(req) {
   const chunks = [];
   for await (const c of req) chunks.push(c);
@@ -52,6 +73,7 @@ export async function bootstrapRelay(options = {}) {
   const dbPath = options.dbPath || getDbPath(config, ROOT);
   openDb(dbPath);
   await syncConfigPets(config);
+    await syncConfigRunners(config);
   if (options.resume !== false) {
     await resumePending(config);
   }
@@ -71,6 +93,13 @@ export function createRelayServer(options = {}) {
     try {
       const url = new URL(req.url || '/', 'http://127.0.0.1');
       const pathname = url.pathname.replace(/\/+$/, '') || '/';
+      applyCors(req, res, config);
+
+      if (req.method === 'OPTIONS') {
+        res.writeHead(204);
+        res.end();
+        return;
+      }
 
       if (
         req.method === 'GET' &&
@@ -79,6 +108,13 @@ export function createRelayServer(options = {}) {
         const h = handlers.health();
         return send(res, h.status, h.body);
       }
+
+
+        if (req.method === 'POST' && pathname === '/v1/agents/register') {
+          const body = await readJson(req);
+          const h = await handlers.agentRegister(body);
+          return send(res, h.status || 200, h.body || {});
+        }
 
       const auth = authenticateRequest(req, config);
       if (!auth.ok) {
@@ -128,6 +164,32 @@ export function createRelayServer(options = {}) {
         return send(res, h.status, h.body);
       }
 
+
+        if (req.method === 'POST' && pathname === '/v1/agents/heartbeat') {
+          const h = handlers.agentHeartbeat(auth);
+          return send(res, h.status, h.body);
+        }
+
+        if (req.method === 'POST' && pathname === '/v1/agents/tasks/result') {
+          const body = await readJson(req);
+          const h = await handlers.agentTaskResult(auth, body);
+          return send(res, h.status, h.body);
+        }
+
+        if (req.method === 'POST' && pathname === '/v1/agents/tasks') {
+          const h = await handlers.agentTasks(auth, {
+            limit: url.searchParams.get('limit'),
+          });
+          return send(res, h.status, h.body);
+        }
+
+        if (req.method === 'GET' && pathname === '/v1/agents') {
+          const h = handlers.agentList(auth, {
+            env: url.searchParams.get('env'),
+            group: url.searchParams.get('group'),
+          });
+          return send(res, h.status, h.body);
+        }
       return send(res, 404, { error: 'not found', path: pathname });
     } catch (err) {
       return send(res, 500, { error: String(err.message || err) });
@@ -154,6 +216,7 @@ export async function listenRelay(options = {}) {
     server.listen(port, host, () => {
       const envs = Object.keys(config.backends || {}).join(',');
       const pets = (config.pets || []).length;
+        const runners = (config.runners || []).length;
       console.log(
         `connecter-relay listening http://${host}:${port} config=${cfgPath} backends=${envs} pets=${pets} db=${boot.dbPath}`
       );

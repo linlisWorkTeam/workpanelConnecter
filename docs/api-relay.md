@@ -167,7 +167,33 @@ Rate limit（pet）：默认 60 req/min/pet → **429**。
 
 ---
 
-## 5. 非目标（本契约版本）
+## 5. E1 Runner API（dsh 出站注册表）
+
+> 状态：**E1 已代码落地**（`src/relay/runners.js` + `/v1/agents/*` + 门禁 `npm run test:runner`）；设计见 `docs/bridge-deepseek-harness.md` §4.4。
+> 与 pet 的 `/v1/*` 契约并存；Runner 使用独立 token（预配于 `config.runners`）。
+
+| 方法 | 路径 | 鉴权 | 用途 |
+|------|------|------|------|
+| POST | `/v1/agents/register` | 匿名（body token 校验） | dsh 动态注册：`{ agentId, token, groups:[{env, groupId|groupName, agentName}] , runtime? }` |
+| POST | `/v1/agents/heartbeat` | runner bearer | 心跳续命（TTL 默认 60s） |
+| POST | `/v1/agents/tasks` | runner bearer | **出站拉任务**：→ `{ tasks:[{taskId, prompt, context, env, groupId, agentName, upMessageId}] }`，同时置 dispatched |
+| POST | `/v1/agents/tasks/result` | runner bearer | 回结果：`{ taskId, status: completed\|failed\|cancelled, content }` → 下 plain echo + run 终态 + best-effort 回写 WP 群线程（E2） |
+| GET  | `/v1/agents?env=&group=` | ops bearer | 运维查询注册表（bindings） |
+
+**register 成功 200**
+
+```json
+{ "agentId": "dsh-…", "channelId": "ch_…", "role": "general",
+  "taskUrl": "…/v1/agents/tasks", "heartbeatUrl": "…/v1/agents/heartbeat" }
+```
+
+**错误**：`401` token 错/坏 · `403` agentId 未预配 · `409` special 唯一冲突 / 每群已有 √一 general · `400` 缺字段。
+
+> 预配形态：`config/relay.json` → `runners: [{ agentId, token, role: "special"|"general", runtime, bindings:[{env, groupId, groupName, agentName}] }]`，启动即 upsert；`role=special` 全局唯一（仅绑定 WorkPanel 自身维护群），`role=general` 每个 (env, group, agent) 至多一个。
+
+---
+
+## 6. 非目标（本契约版本）
 
 - WebSocket、WP→Connecter 回调、动态注册审批  
 - Connecter 业务网页  

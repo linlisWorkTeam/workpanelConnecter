@@ -2,7 +2,8 @@
 
 > 日期：2026-08-10 · 角色：cs（Connecter 侧）  
 > 背景：云主机内存仅够约 **2 个 Agent session**；希望参考 Raft「节点可分散部署」、本机跑 Agent；WorkPet/Connecter 现状是 **Team↔Team 中继**，尚未做 **Team 内跨机 Agent 直达**。  
-> 关联：`docs/workconnector-system-design.md` · `docs/NEXT-DEV-PATH.md`
+> 关联：`docs/workconnector-system-design.md` · `docs/NEXT-DEV-PATH.md` · `docs/bridge-deepseek-harness.md`
+> 定位：Connecter = **各 WorkPanel ↔ DeepSeek Harness 的桥上中继**；E1 的「本机 Runner」即 DeepSeek Harness（dsh），见桥接设计文档。
 
 ## 1. 问题重新表述
 

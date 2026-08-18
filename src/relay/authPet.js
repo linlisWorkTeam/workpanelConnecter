@@ -9,6 +9,7 @@ import {
   touchPet,
   checkRateLimit,
 } from './registry.js';
+import { findRunnerByToken, touchRunner } from './runners.js';
 
 export { extractBearer, checkBearer as checkBearerLegacy } from './auth.js';
 
@@ -45,6 +46,16 @@ export function authenticateRequest(req, config, { rateLimit = true } = {}) {
   const tokens = config?.auth?.tokens || [];
   if (tokens.includes(token)) {
     return { ok: true, kind: 'ops', petId: null, client: 'ops' };
+  }
+
+  // dsh runner token (E1)
+  const runner = findRunnerByToken(token);
+  if (runner) {
+    if (runner.status !== 'active') {
+      return { ok: false, status: 401, error: 'runner disabled' };
+    }
+    touchRunner(runner.id);
+    return { ok: true, kind: 'runner', petId: null, runner, client: 'runner' };
   }
 
   return { ok: false, status: 401, error: 'invalid bearer token' };

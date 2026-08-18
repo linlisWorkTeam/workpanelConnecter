@@ -47,3 +47,4 @@ tmp/
 .codex-tmp-cubism/
 apps/workpet/artifacts/
 config/relay.json.bak*
+.playwright-cli/

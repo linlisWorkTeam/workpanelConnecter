@@ -248,3 +248,31 @@ export async function dispatchWorkPanel(server, team, prompt, { timeoutMs = 2000
 export function isWorkPanelServer(server) {
   return server?.kind === 'workpanel' || server?.protocol === 'workpanel';
 }
+
+/**
+ * E2: post a message INTO a WorkPanel group thread AS the named agent member.
+ * Best-effort write-back for runner results (sender = the agent itself).
+ */
+export async function postAsAgent(server, { groupId, agentName, content, timeoutMs = 15000 } = {}) {
+  const token = await wpLogin(server, { timeoutMs });
+  let memberId = null;
+  if (groupId && agentName) {
+    const stateRes = await fetchJson(`${baseOf(server)}/api/groups/${groupId}`, { token, timeoutMs });
+    if (stateRes.ok && Array.isArray(stateRes.json?.members)) {
+      const hit = stateRes.json.members.find(
+        (m) => m.kind === 'agent' && m.isActive && m.displayName === agentName
+      );
+      memberId = hit?.id || null;
+    }
+  }
+  if (!memberId) {
+    return { ok: false, status: 400, error: `agent member not found: ${agentName || groupId}` };
+  }
+  const res = await fetchJson(`${baseOf(server)}/api/messages`, {
+    method: 'POST',
+    token,
+    timeoutMs,
+    body: { groupId, senderMemberId: memberId, content },
+  });
+  return { ok: res.ok, status: res.status, body: res.json };
+}

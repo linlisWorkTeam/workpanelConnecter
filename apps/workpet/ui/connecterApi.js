@@ -3,11 +3,11 @@
  * 契约见 docs/workconnector-system-design.md §3 与 src/relay/handlers.js。
  */
 (function (root, factory) {
+  const api = factory();
   if (typeof module === 'object' && module.exports) {
-    module.exports = factory();
-  } else {
-    root.ConnecterClient = factory();
+    module.exports = api;
   }
+  if (root) root.ConnecterClient = api;
 })(typeof self !== 'undefined' ? self : this, function () {
   'use strict';
 

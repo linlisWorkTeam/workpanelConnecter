@@ -1,6 +1,8 @@
 # WorkPanelConnecter
 
-多 WorkPanel 协同的 **调度中继 + CLI**。只做调度，不做业务。桌宠 UI：同仓 **WorkPet**。
+连接 **各 WorkPanel（云端群组）** 与 **DeepSeek Harness（本机/远端 Agent 执行）** 的 **桥上中继 + CLI**。只做调度，不做业务。桌宠 UI：同仓 **WorkPet**。
+
+桥接定位与设计见 [docs/bridge-deepseek-harness.md](docs/bridge-deepseek-harness.md)。
 
 **MVP（Phase 0–4）已完成** · 下一步见 [NEXT-DEV-PATH](docs/NEXT-DEV-PATH.md)
 
@@ -58,6 +60,7 @@ npm run test:relay      # 中继网关门禁
 
 | 文档 | 说明 |
 |------|------|
+| [桥接设计（WorkPanel × DeepSeek Harness）](docs/bridge-deepseek-harness.md) | 本项目定位：连接各 WP 与 dsh 的桥上中继 |
 | [下一步路径](docs/NEXT-DEV-PATH.md) | P0–P3 开发顺序 |
 | [演进方向（Raft/本机 Agent）](docs/CONNECTER-EVOLUTION.md) | **2026-08-10 战略答复：E1–E4** |
 | [Relay API 契约](docs/api-relay.md) | `/v1/*` 冻结契约 |
