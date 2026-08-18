@@ -59,6 +59,7 @@ npm run test:relay      # 中继网关门禁
 | 文档 | 说明 |
 |------|------|
 | [下一步路径](docs/NEXT-DEV-PATH.md) | P0–P3 开发顺序 |
+| [演进方向（Raft/本机 Agent）](docs/CONNECTER-EVOLUTION.md) | **2026-08-10 战略答复：E1–E4** |
 | [Relay API 契约](docs/api-relay.md) | `/v1/*` 冻结契约 |
 | [运维手册](deploy/README.md) | 备份 / token / systemd |
 | [Roadmap](docs/ROADMAP.md) | Phase 0–5 状态 |
