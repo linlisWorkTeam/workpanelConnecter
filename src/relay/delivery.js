@@ -76,9 +76,14 @@ export async function deliverOnce(config, messageRow) {
     name: instance.group_name || instance.group_id,
     coordinatorAgentName: instance.agent_name,
   };
-  const content = envelope.payload?.content || '';
+  const payload = envelope.payload || {};
+  const content = payload.content || '';
 
-  const result = await dispatchWorkPanel(server, team, content);
+  const result = await dispatchWorkPanel(server, team, content, {
+    petName: payload.petName,
+    mentionAgentName: payload.mentionAgentName,
+    formattedContent: payload.formatted ? payload.content : undefined,
+  });
   if (!result.ok) {
     const retries = (messageRow.retries || 0) + 1;
     await markFailed(messageRow.id, result.error, retries);

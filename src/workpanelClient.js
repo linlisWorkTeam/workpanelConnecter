@@ -253,7 +253,9 @@ export async function dispatchWorkPanel(server, team, prompt, options = {}) {
     }
 
     let content;
-    if (options.petName) {
+    if (options.formattedContent) {
+      content = String(options.formattedContent);
+    } else if (options.petName) {
       const parsed = parseAgentMention(prompt, members);
       const rest = parsed.ok && parsed.agent ? parsed.rest : String(prompt || '').trim();
       content = `@${mention.displayName}\n${formatPetStamp(options.petName)}\n${rest}`.trim();

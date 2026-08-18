@@ -122,6 +122,29 @@ export function listAgentInstancesForPet(petId) {
     .all(petId);
 }
 
+export async function ensureAgentInstance({ petId, env, groupId, groupName, agentName }) {
+  return writeTx((database) => {
+    const instanceId = `${petId}:${env}:${groupId}:${agentName}`;
+    database
+      .prepare(
+        `INSERT INTO agent_instances
+          (id, pet_id, agent_type, env, group_id, group_name, agent_name, status)
+         VALUES (?, ?, 'pet', ?, ?, ?, ?, 'active')
+         ON CONFLICT(pet_id, env, group_id, agent_name) DO UPDATE SET
+           group_name = excluded.group_name,
+           status = 'active'`
+      )
+      .run(instanceId, petId, env, groupId, groupName || groupId, agentName);
+
+    return database
+      .prepare(
+        `SELECT * FROM agent_instances
+         WHERE pet_id = ? AND env = ? AND group_id = ? AND agent_name = ?`
+      )
+      .get(petId, env, groupId, agentName);
+  });
+}
+
 export function resolveAgentInstance(petId, { env, group, agent }) {
   const instances = listAgentInstancesForPet(petId);
   if (!instances.length) return null;

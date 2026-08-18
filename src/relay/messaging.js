@@ -19,6 +19,7 @@ export function makeEnvelope({
   to,
   content,
   ack = 'accepted',
+  payload,
 }) {
   return {
     id: id || `msg_${randomUUID()}`,
@@ -29,7 +30,7 @@ export function makeEnvelope({
       : `grp_${conversation}`,
     from,
     to,
-    payload: { content },
+    payload: payload || { content },
     ts: Date.now(),
     ack,
   };
@@ -40,6 +41,7 @@ export async function acceptUpMessage({
   agentInstance,
   petId,
   content,
+  payload,
 }) {
   const envelope = makeEnvelope({
     id: messageId || `msg_${randomUUID()}`,
@@ -48,6 +50,7 @@ export async function acceptUpMessage({
     from: { kind: 'pet', id: petId },
     to: { kind: 'agent', id: agentInstance.agent_name },
     content,
+    payload: payload || { content },
     ack: 'accepted',
   });
 

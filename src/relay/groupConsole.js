@@ -2,7 +2,7 @@
  * DTOs for GET /v1/groups* (WorkPet mini group console).
  */
 
-import { stripPetStamp } from './petStamp.js';
+import { parseAgentMention, stripPetStamp } from './petStamp.js';
 
 export function mapWpMessage(row) {
   const { petDisplayName, contentDisplay } = stripPetStamp(row.content || '');
@@ -50,4 +50,15 @@ export function coordinatorAgentName(members, defaults = {}) {
   }
   const first = (members || []).find((m) => m.kind === 'agent' && m.isActive);
   return first?.displayName || name || null;
+}
+
+export function resolveChatTarget({ prompt, members, requestedAgent, defaults }) {
+  const parsed = parseAgentMention(prompt, members);
+  if (!parsed.ok) return parsed;
+  if (parsed.agent) return { ok: true, agent: parsed.agent, rest: parsed.rest };
+  const name = requestedAgent || defaults.coordinatorAgentName;
+  const agent = members.find((m) => m.kind === 'agent' && m.isActive && (!name || m.displayName === name))
+    || members.find((m) => m.kind === 'agent' && m.isActive);
+  if (!agent) return { ok: false, code: 'NO_COORDINATOR', error: 'no coordinator agent in group' };
+  return { ok: true, agent, rest: parsed.rest };
 }

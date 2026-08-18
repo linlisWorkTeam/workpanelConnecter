@@ -11,15 +11,18 @@ import {
   toGroupMember,
   coordinatorAgentName,
   mapWpMessage,
+  resolveChatTarget,
 } from './groupConsole.js';
 import {
   resolveAgentInstance,
   listAgentInstancesForPet,
   revokePetSessions,
+  ensureAgentInstance,
 } from './registry.js';
 import { acceptUpMessage, pollMessages } from './messaging.js';
 import { deliverWithRetry } from './delivery.js';
 import { db, getRun, getMessageById } from './db.js';
+import { formatPetStamp } from './petStamp.js';
 import {
   registerRunner,
   heartbeatRunner,
@@ -150,23 +153,49 @@ export function createHandlers({ config }) {
 
       // --- Pet path (Phase 1.5) ---
       if (auth.kind === 'pet') {
-        if (
-          (body.env || config.defaults?.env) === 'prod' &&
-          config.allowProdFromPet === false
-        ) {
+        const gate = petBackend(auth, body.env);
+        if (gate.error) return gate.error;
+        const { resolved, server } = gate;
+        const groupKey = body.group || body.groupId || resolved.defaults?.group;
+        if (!groupKey) {
+          return { status: 400, body: { error: 'group required' } };
+        }
+
+        let got = await wpGetGroup(server, groupKey);
+        if (!got.ok) {
+          const listed = await wpListGroups(server);
+          const hit =
+            listed.ok &&
+            (listed.groups || []).find((g) => g.id === groupKey || g.name === groupKey);
+          if (hit) got = await wpGetGroup(server, hit.id);
+        }
+        if (!got.ok) {
+          if (got.status === 404) {
+            return { status: 404, body: { error: got.error || 'group not found' } };
+          }
           return {
-            status: 403,
-            body: { error: 'prod env forbidden for pet', code: 'PROD_FORBIDDEN' },
+            status: 502,
+            body: { error: got.error || 'wp group failed', code: 'WP_GROUPS_FAILED' },
           };
         }
-        const instance = resolveAgentInstance(auth.petId, {
-          env: body.env,
-          group: body.group || body.groupId,
-          agent: body.agent || body.agentName,
+
+        const target = resolveChatTarget({
+          prompt: String(prompt),
+          members: got.members || [],
+          requestedAgent: body.agent || body.agentName,
+          defaults: resolved.defaults || {},
         });
-        if (!instance) {
-          return { status: 400, body: { error: 'no matching agent_instance for pet' } };
+        if (!target.ok) {
+          return { status: 400, body: { error: target.error, code: target.code } };
         }
+
+        const instance = await ensureAgentInstance({
+          petId: auth.petId,
+          env: resolved.env,
+          groupId: got.group.id,
+          groupName: got.group.name,
+          agentName: target.agent.displayName,
+        });
         if (instance.env === 'prod' && config.allowProdFromPet === false) {
           return {
             status: 403,
@@ -174,11 +203,19 @@ export function createHandlers({ config }) {
           };
         }
 
+        const petName = body.petName;
+        const formatted = `@${target.agent.displayName}\n${formatPetStamp(petName)}\n${target.rest}`.trim();
         const accepted = await acceptUpMessage({
           messageId: body.id,
           agentInstance: instance,
           petId: auth.petId,
-          content: String(prompt),
+          content: formatted,
+          payload: {
+            content: formatted,
+            formatted: true,
+            mentionAgentName: target.agent.displayName,
+            petName,
+          },
         });
 
         // Idempotent replay
@@ -198,6 +235,7 @@ export function createHandlers({ config }) {
               runIds: runs.map((r) => r.id),
               group: instance.group_id,
               coordinatorAgent: instance.agent_name,
+              mentionedAgent: target.agent.displayName,
             },
           };
         }
@@ -226,6 +264,7 @@ export function createHandlers({ config }) {
                 runIds: [task.id],
                 group: instance.group_id,
                 coordinatorAgent: instance.agent_name,
+                mentionedAgent: target.agent.displayName,
                 runner: { agentId: runnerBinding.runner_id, channelId: runnerBinding.channel_id },
               },
             };
@@ -244,6 +283,7 @@ export function createHandlers({ config }) {
               error: delivered.error,
               group: instance.group_id,
               coordinatorAgent: instance.agent_name,
+              mentionedAgent: target.agent.displayName,
             },
           };
         }
@@ -259,6 +299,7 @@ export function createHandlers({ config }) {
             wpMessageId: delivered.wpMessageId,
             group: instance.group_id,
             coordinatorAgent: instance.agent_name,
+            mentionedAgent: target.agent.displayName,
           },
         };
       }
