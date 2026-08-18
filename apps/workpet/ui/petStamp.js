@@ -24,3 +24,10 @@ export function matchAgentPrefix(typed, agents) {
     .sort((a, b) => b.displayName.length - a.displayName.length)
     .find((m) => m.displayName.startsWith(prefix)) || null;
 }
+
+/** Prefer WorkPet stamp display name; otherwise sender label. */
+export function renderMessageAuthor(msg, petName) {
+  if (msg?.petDisplayName) return String(msg.petDisplayName);
+  if (msg?.senderDisplayName) return String(msg.senderDisplayName);
+  return petName ? String(petName) : '';
+}

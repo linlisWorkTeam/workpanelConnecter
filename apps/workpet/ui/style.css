@@ -302,11 +302,36 @@ button { -webkit-app-region: no-drag; }
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
 }
 
-.panel-head h1 {
+.panel-head h1,
+.group-select {
   margin: 2px 0 0;
   color: #f5f8ff;
   font-size: 15px;
   font-weight: 700;
+}
+
+.group-select {
+  display: block;
+  max-width: 220px;
+  padding: 5px 10px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  outline: none;
+  color: #f5f8ff;
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 12px;
+  font-weight: 600;
+  -webkit-app-region: no-drag;
+}
+
+.group-select:focus {
+  border-color: rgba(124, 231, 255, 0.45);
+  box-shadow: 0 0 0 3px rgba(124, 231, 255, 0.07);
+}
+
+.group-select option {
+  color: #111827;
+  background: #f8fafc;
 }
 
 .eyebrow {
@@ -330,6 +355,63 @@ button { -webkit-app-region: no-drag; }
   color: var(--mint);
   border-color: rgba(112, 240, 187, 0.24);
   background: rgba(112, 240, 187, 0.08);
+}
+
+.member-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 14px 6px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  max-height: 72px;
+  overflow-y: auto;
+  -webkit-app-region: no-drag;
+}
+
+.member-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 999px;
+  color: var(--muted);
+  background: rgba(255, 255, 255, 0.04);
+  font-size: 9px;
+  cursor: pointer;
+}
+
+.member-chip:disabled {
+  cursor: default;
+  opacity: 0.85;
+}
+
+.member-chip[data-kind="agent"]:not(:disabled):hover {
+  color: #e8f7ff;
+  border-color: rgba(124, 231, 255, 0.28);
+  background: rgba(124, 231, 255, 0.08);
+}
+
+.online-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #6b7280;
+  flex: 0 0 auto;
+}
+
+.online-dot.is-online {
+  background: var(--mint);
+  box-shadow: 0 0 0 2px rgba(112, 240, 187, 0.16);
+}
+
+.online-dot.is-offline {
+  background: #6b7280;
+}
+
+.member-strip-error {
+  color: #ffb7c4;
+  font-size: 10px;
 }
 
 .msg-list {

@@ -47,13 +47,15 @@
       <div class="panel-head">
         <div>
           <p class="eyebrow">CONNECTED SPACE</p>
-          <h1 id="panelTitle">灰度测试</h1>
+          <select id="groupSelect" class="group-select" aria-label="切换群聊"></select>
         </div>
         <span id="connectionBadge" class="connection-badge">未连接</span>
       </div>
+      <div id="memberStrip" class="member-strip" aria-label="群成员"></div>
       <div id="msgList" class="msg-list" aria-live="polite"></div>
       <form id="composer" class="panel-foot">
-        <input id="input" class="input" type="text" placeholder="对 WorkPanel 说点什么…" autocomplete="off" />
+        <input id="input" class="input" type="text" list="agentMentions" placeholder="对 WorkPanel 说点什么…" autocomplete="off" />
+        <datalist id="agentMentions"></datalist>
         <button id="sendBtn" class="send-btn" type="submit" aria-label="发送消息">
           <span>发送</span><span aria-hidden="true">↗</span>
         </button>

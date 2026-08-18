@@ -7,6 +7,7 @@ import {
   normalizePetState,
   petWindowSize,
 } from './petConfig.js';
+import { renderMessageAuthor } from './petStamp.js';
 
 const $ = (id) => document.getElementById(id);
 const app = $('app');
@@ -14,22 +15,31 @@ const panel = $('panel');
 const msgList = $('msgList');
 const input = $('input');
 const sendBtn = $('sendBtn');
-const titleEl = $('panelTitle');
+const groupSelect = $('groupSelect');
+const memberStrip = $('memberStrip');
+const agentMentions = $('agentMentions');
 const connectionBadge = $('connectionBadge');
 const speechBubble = $('speechBubble');
 const loadingHint = $('loadingHint');
 
 const PANEL_SIZE = { width: 440, height: 680 };
 const PET_SCALE_STORAGE_KEY = 'workpet.petScale';
+const GROUP_ID_STORAGE_KEY = 'workpet.groupId';
+const MEMBER_POLL_MS = 10000;
 
 let client = null;
 let cfg = {};
-let cursor = 0;
-let pollTimer = null;
+let msgPollTimer = null;
+let memberPollTimer = null;
 let bubbleTimer = null;
 let panelOpen = false;
 let sending = false;
 let petScale = 1;
+let currentGroupId = '';
+let consolePaused = false;
+let agentMembers = [];
+const renderedMessageIds = new Set();
+const pendingOptimistic = new Map();
 const runPolls = {};
 
 const pet = new Live2DPet({
@@ -63,6 +73,20 @@ function readSavedPetScale(config) {
     if (saved !== null) return normalizePetScale(saved);
   } catch (_) { /* 无本地存储时读取配置 */ }
   return normalizePetScale(config?.ui?.petScale);
+}
+
+function readSavedGroupId() {
+  try {
+    return localStorage.getItem(GROUP_ID_STORAGE_KEY) || '';
+  } catch (_) {
+    return '';
+  }
+}
+
+function persistGroupId(id) {
+  try {
+    if (id) localStorage.setItem(GROUP_ID_STORAGE_KEY, id);
+  } catch (_) { /* 仅本次有效 */ }
 }
 
 function updateSizeButtons() {
@@ -114,6 +138,132 @@ function addMsg(text, kind = 'theirs', meta = '') {
   return el;
 }
 
+function clearConsoleTimers() {
+  clearInterval(msgPollTimer);
+  clearInterval(memberPollTimer);
+  msgPollTimer = null;
+  memberPollTimer = null;
+}
+
+function pauseConsolePolling(hint) {
+  consolePaused = true;
+  clearConsoleTimers();
+  addMsg(hint || '请求过于频繁（429），已暂停本桌宠群控制台轮询', 'sys');
+  showBubble('轮询已暂停（429）');
+}
+
+function isHttpCode(error, status, code) {
+  return error?.kind === 'http' && error.status === status && error.body?.code === code;
+}
+
+function extractMentionName(text) {
+  const match = String(text || '').match(/@([^\s@]+)/);
+  return match ? match[1] : '某某';
+}
+
+function addGroupMsg(msg) {
+  const author = renderMessageAuthor(msg, cfg.petName);
+  const text = msg.contentDisplay != null ? String(msg.contentDisplay) : String(msg.content || '');
+  const kind = msg.petDisplayName && msg.petDisplayName === cfg.petName ? 'mine' : 'theirs';
+  return addMsg(text, kind, author);
+}
+
+function removeMatchingOptimistic(msg) {
+  const content = msg.contentDisplay != null ? String(msg.contentDisplay) : '';
+  for (const [id, pending] of pendingOptimistic) {
+    if (pending.text !== content) continue;
+    if (msg.petDisplayName && msg.petDisplayName !== cfg.petName) continue;
+    pending.el.remove();
+    pendingOptimistic.delete(id);
+    return true;
+  }
+  return false;
+}
+
+function ingestGroupMessage(msg, { speak = false } = {}) {
+  if (!msg?.id) return;
+  if (renderedMessageIds.has(msg.id)) return;
+  removeMatchingOptimistic(msg);
+  renderedMessageIds.add(msg.id);
+  addGroupMsg(msg);
+  if (speak && msg.contentDisplay) {
+    showBubble(msg.contentDisplay);
+    setPetState('speaking');
+    setTimeout(() => setPetState('idle'), 1800);
+  }
+}
+
+function refreshAgentDatalist() {
+  agentMentions.innerHTML = '';
+  for (const member of agentMembers) {
+    const option = document.createElement('option');
+    option.value = `@${member.displayName}`;
+    agentMentions.appendChild(option);
+  }
+}
+
+function renderMembers(members) {
+  memberStrip.innerHTML = '';
+  agentMembers = (members || []).filter((m) => m && m.kind === 'agent' && m.displayName);
+  refreshAgentDatalist();
+
+  for (const member of members || []) {
+    if (!member?.displayName) continue;
+    const chip = document.createElement('button');
+    chip.type = 'button';
+    chip.className = 'member-chip';
+    chip.dataset.kind = member.kind || '';
+    chip.dataset.id = member.id || '';
+
+    const dot = document.createElement('span');
+    dot.className = `online-dot ${member.online ? 'is-online' : 'is-offline'}`;
+    dot.setAttribute('aria-hidden', 'true');
+
+    const label = document.createElement('span');
+    label.textContent = member.displayName;
+
+    chip.appendChild(dot);
+    chip.appendChild(label);
+
+    if (member.kind === 'agent') {
+      chip.title = `插入 @${member.displayName}`;
+      chip.addEventListener('click', () => {
+        const insert = `@${member.displayName} `;
+        const start = input.selectionStart ?? input.value.length;
+        const end = input.selectionEnd ?? input.value.length;
+        input.value = `${input.value.slice(0, start)}${insert}${input.value.slice(end)}`;
+        const caret = start + insert.length;
+        input.focus();
+        input.setSelectionRange(caret, caret);
+        refreshAgentDatalist();
+      });
+    } else {
+      chip.disabled = true;
+      chip.title = member.kind || 'member';
+    }
+
+    memberStrip.appendChild(chip);
+  }
+}
+
+function setMemberStripError(text) {
+  memberStrip.innerHTML = '';
+  const el = document.createElement('span');
+  el.className = 'member-strip-error';
+  el.textContent = text;
+  memberStrip.appendChild(el);
+}
+
+function setGroupSelectError(text) {
+  groupSelect.innerHTML = '';
+  const option = document.createElement('option');
+  option.value = '';
+  option.textContent = text;
+  option.disabled = true;
+  option.selected = true;
+  groupSelect.appendChild(option);
+}
+
 async function loadConfig() {
   if (window.__TAURI__?.core) {
     try {
@@ -134,7 +284,6 @@ async function loadConfig() {
 function applyConfig(value) {
   cfg = value || {};
   $('petName').textContent = cfg.petName || 'WorkPet';
-  titleEl.textContent = cfg.group || cfg.env || '本地桌宠';
   const createClient = window.ConnecterClient?.createConnecterClient;
   if (cfg.connecterBaseUrl && cfg.token && createClient) {
     try {
@@ -145,7 +294,6 @@ function applyConfig(value) {
   } else if (cfg.connecterBaseUrl && cfg.token) {
     addMsg('Connecter SDK 未加载，聊天暂不可用。', 'err');
   }
-  cursor = 0;
 }
 
 async function checkConnection() {
@@ -165,6 +313,98 @@ async function checkConnection() {
   }
 }
 
+async function loadGroupMembers({ showError = true } = {}) {
+  if (!client || !currentGroupId || consolePaused) return;
+  try {
+    const response = await client.group(currentGroupId, {});
+    renderMembers(response.members || []);
+  } catch (error) {
+    if (error?.status === 429) {
+      pauseConsolePolling();
+      return;
+    }
+    if (showError) setMemberStripError(`成员加载失败：${error.message}`);
+  }
+}
+
+async function loadGroupMessages({ speakNew = false, showError = true } = {}) {
+  if (!client || !currentGroupId || consolePaused) return;
+  try {
+    const response = await client.groupMessages(currentGroupId, { limit: 50 });
+    const knownBefore = renderedMessageIds.size;
+    for (const message of response.messages || []) {
+      const isNew = !renderedMessageIds.has(message.id);
+      ingestGroupMessage(message, { speak: speakNew && isNew && knownBefore > 0 });
+    }
+  } catch (error) {
+    if (error?.status === 429) {
+      pauseConsolePolling();
+      return;
+    }
+    if (showError) addMsg(`消息加载失败：${error.message}`, 'err');
+  }
+}
+
+async function selectGroup(id) {
+  if (!id) return;
+  currentGroupId = id;
+  persistGroupId(id);
+  if (groupSelect.value !== id) groupSelect.value = id;
+  renderedMessageIds.clear();
+  pendingOptimistic.clear();
+  msgList.innerHTML = '';
+  memberStrip.innerHTML = '';
+  agentMembers = [];
+  refreshAgentDatalist();
+  await Promise.all([loadGroupMembers(), loadGroupMessages({ speakNew: false })]);
+}
+
+async function loadGroups() {
+  if (!client) {
+    setGroupSelectError('未连接 Connecter');
+    return;
+  }
+  try {
+    const response = await client.groups({});
+    const groups = response.groups || [];
+    groupSelect.innerHTML = '';
+    if (!groups.length) {
+      setGroupSelectError('暂无群聊');
+      currentGroupId = '';
+      return;
+    }
+    for (const group of groups) {
+      const option = document.createElement('option');
+      option.value = group.id;
+      const unread = group.unreadCount ? ` · ${group.unreadCount}` : '';
+      option.textContent = `${group.name || group.id}${unread}`;
+      groupSelect.appendChild(option);
+    }
+    const saved = readSavedGroupId();
+    const pick = groups.some((g) => g.id === saved) ? saved : groups[0].id;
+    await selectGroup(pick);
+  } catch (error) {
+    if (error?.status === 429) {
+      setGroupSelectError('加载群列表失败（429）');
+      pauseConsolePolling();
+      return;
+    }
+    setGroupSelectError(`群列表失败：${error.message}`);
+  }
+}
+
+function startConsolePolling() {
+  clearConsoleTimers();
+  if (consolePaused || !client) return;
+  const msgMs = cfg.pollIntervalMs || 2000;
+  msgPollTimer = setInterval(() => {
+    loadGroupMessages({ speakNew: true, showError: false });
+  }, msgMs);
+  memberPollTimer = setInterval(() => {
+    loadGroupMembers({ showError: false });
+  }, MEMBER_POLL_MS);
+}
+
 async function send() {
   const text = input.value.trim();
   if (!text || sending) return;
@@ -173,24 +413,50 @@ async function send() {
     showBubble('我已经醒了，但还没有连接到 WorkPanel。');
     return;
   }
+  if (!currentGroupId) {
+    addMsg('请先选择群聊。', 'err');
+    return;
+  }
 
   sending = true;
   sendBtn.disabled = true;
   setPetState('thinking');
-  addMsg(text, 'mine', '发送中…');
   input.value = '';
 
   const id = `msg_pet_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+  const optimistic = addMsg(text, 'mine', cfg.petName || 'WorkPet');
+  pendingOptimistic.set(id, { text, el: optimistic });
+
   try {
-    const response = await client.chat(text, { id });
+    const response = await client.chat(text, {
+      group: currentGroupId,
+      petName: cfg.petName,
+      id,
+    });
     addMsg('已受理', 'sys', [response.messageId, ...(response.runIds || [])].filter(Boolean).join(' · '));
-    cursor = 0;
     (response.runIds || []).forEach(pollRun);
     setPetState('idle');
   } catch (error) {
-    addMsg(`发送失败：${error.message}`, 'err');
-    showBubble('消息没有送达，再试一次吧。');
-    setPetState('error');
+    const pending = pendingOptimistic.get(id);
+    if (pending) {
+      pending.el.remove();
+      pendingOptimistic.delete(id);
+    }
+    if (isHttpCode(error, 400, 'UNKNOWN_MENTION')) {
+      const name = extractMentionName(text);
+      const hint = `找不到 @${name}`;
+      addMsg(hint, 'err');
+      showBubble(hint);
+      setPetState('idle');
+    } else if (error?.status === 429) {
+      addMsg(`发送失败：${error.message}`, 'err');
+      pauseConsolePolling();
+      setPetState('error');
+    } else {
+      addMsg(`发送失败：${error.message}`, 'err');
+      showBubble('消息没有送达，再试一次吧。');
+      setPetState('error');
+    }
   } finally {
     sending = false;
     sendBtn.disabled = false;
@@ -214,25 +480,10 @@ async function pollRun(runId) {
   delete runPolls[runId];
 }
 
-async function pollMessages() {
-  if (!client || !panelOpen) return;
-  try {
-    const response = await client.messages(cursor);
-    for (const message of response.messages || []) {
-      if (message.id?.startsWith('msg_pet_')) continue;
-      const content = message.payload?.content || JSON.stringify(message.payload || {});
-      addMsg(content, 'theirs', `seq ${message.seq} · ${message.direction || ''}`);
-      showBubble(content);
-      setPetState('speaking');
-      setTimeout(() => setPetState('idle'), 1800);
-    }
-    cursor = response.nextCursor || cursor;
-  } catch (_) { /* 下一轮再试，不打断桌宠 */ }
-}
-
 async function expand() {
   if (panelOpen) return;
   panelOpen = true;
+  consolePaused = false;
   app.classList.add('is-expanded');
   panel.classList.remove('is-hidden');
   $('collapseBtn').classList.remove('is-hidden');
@@ -242,9 +493,8 @@ async function expand() {
     await win.setSize(logicalSize(PANEL_SIZE));
     await win.setFocus();
   }
-  cursor = 0;
-  clearInterval(pollTimer);
-  pollTimer = setInterval(pollMessages, cfg.pollIntervalMs || 2000);
+  await loadGroups();
+  startConsolePolling();
   input.focus();
 }
 
@@ -255,8 +505,7 @@ async function collapse() {
   panel.classList.add('is-hidden');
   $('collapseBtn').classList.add('is-hidden');
   $('chatToggle').classList.remove('is-hidden');
-  clearInterval(pollTimer);
-  pollTimer = null;
+  clearConsoleTimers();
   const win = tauriWindow();
   if (win) await win.setSize(logicalSize(petWindowSize(petScale)));
 }
@@ -281,6 +530,12 @@ async function init() {
   $('collapseBtn').addEventListener('click', collapse);
   $('sizeDownBtn').addEventListener('click', () => resizePet(-1));
   $('sizeUpBtn').addEventListener('click', () => resizePet(1));
+  groupSelect.addEventListener('change', () => {
+    if (groupSelect.value) selectGroup(groupSelect.value);
+  });
+  input.addEventListener('keyup', (event) => {
+    if (event.key === '@' || input.value.includes('@')) refreshAgentDatalist();
+  });
   $('composer').addEventListener('submit', (event) => {
     event.preventDefault();
     send();

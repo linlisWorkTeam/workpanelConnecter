@@ -4,7 +4,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { matchAgentPrefix, stripPetStamp } from '../ui/petStamp.js';
+import { matchAgentPrefix, renderMessageAuthor, stripPetStamp } from '../ui/petStamp.js';
 
 const sdkPath = fileURLToPath(new URL('../ui/connecterApi.js', import.meta.url));
 
@@ -44,6 +44,17 @@ test('stripPetStamp leaves unstamped content alone', () => {
     petDisplayName: null,
     contentDisplay: 'plain',
   });
+});
+
+test('renderMessageAuthor prefers petDisplayName then senderDisplayName', () => {
+  assert.equal(
+    renderMessageAuthor({ petDisplayName: '林的Pet', senderDisplayName: 'Local User' }, '林的Pet'),
+    '林的Pet'
+  );
+  assert.equal(
+    renderMessageAuthor({ petDisplayName: null, senderDisplayName: 'Local User' }, '林的Pet'),
+    'Local User'
+  );
 });
 
 test('chat body includes petName from options or cfg', () => {
