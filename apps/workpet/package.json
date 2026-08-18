@@ -10,7 +10,7 @@
     "dev:ui": "vite --host 127.0.0.1 --port 1420",
     "build:ui": "vite build",
     "build": "tauri build",
-    "test:ui": "node --test tests/petConfig.test.mjs tests/connecterApi.test.mjs",
+    "test:ui": "node --test tests/petConfig.test.mjs tests/connecterApi.test.mjs tests/petStamp.test.mjs",
     "test:workpet": "node ../../scripts/workpet-gate.js"
   },
   "dependencies": {

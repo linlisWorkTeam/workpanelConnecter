@@ -18,6 +18,7 @@
       env: cfg.env || 'canary',
       group: cfg.group || '',
       agent: cfg.agent || '',
+      petName: cfg.petName || '',
     };
     if (!base) throw new Error('connecterBaseUrl required');
     if (!token) throw new Error('token required');
@@ -46,28 +47,52 @@
       return body;
     }
 
+    function buildChatBody(prompt, o = {}) {
+      return {
+        id: o.id,
+        prompt,
+        env: o.env || defaults.env,
+        group: o.group || defaults.group,
+        agent: o.agent || defaults.agent,
+        petName: o.petName || defaults.petName,
+      };
+    }
+
     return {
+      buildChatBody,
       /** GET /v1/health */
       health: () => request('/v1/health'),
       /** GET /v1/envs */
       envs: () => request('/v1/envs'),
       /** GET /v1/instances (pet token) */
       instances: () => request('/v1/instances'),
+      /** GET /v1/groups */
+      groups: (o = {}) => {
+        const q = new URLSearchParams({ env: o.env || defaults.env });
+        return request('/v1/groups?' + q.toString());
+      },
+      /** GET /v1/groups/{id} */
+      group: (id, o = {}) => {
+        const q = new URLSearchParams({ env: o.env || defaults.env });
+        return request('/v1/groups/' + encodeURIComponent(id) + '?' + q.toString());
+      },
+      /** GET /v1/groups/{id}/messages */
+      groupMessages: (id, o = {}) => {
+        const q = new URLSearchParams({
+          env: o.env || defaults.env,
+          limit: String(o.limit || 50),
+        });
+        return request('/v1/groups/' + encodeURIComponent(id) + '/messages?' + q.toString());
+      },
       /**
        * POST /v1/chat
        * @param {string} prompt
-       * @param {{id?:string, group?:string, agent?:string, env?:string}} [o]
+       * @param {{id?:string, group?:string, agent?:string, env?:string, petName?:string}} [o]
        */
       chat: (prompt, o = {}) =>
         request('/v1/chat', {
           method: 'POST',
-          body: JSON.stringify({
-            id: o.id,
-            prompt,
-            env: o.env || defaults.env,
-            group: o.group || defaults.group,
-            agent: o.agent || defaults.agent,
-          }),
+          body: JSON.stringify(buildChatBody(prompt, o)),
         }),
       /**
        * GET /v1/messages?since=… （轮询回显，N2）
