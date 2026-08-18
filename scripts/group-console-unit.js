@@ -7,6 +7,13 @@ import {
   applyPetStamp,
   stripPetStamp,
 } from '../src/relay/petStamp.js';
+import {
+  wpListGroups,
+  wpGetGroup,
+  wpListGroupMessages,
+  wpGetPresence,
+  dispatchWorkPanel,
+} from '../src/workpanelClient.js';
 
 const members = [
   { id: 'u1', kind: 'user', displayName: '林', isActive: true },
@@ -77,3 +84,39 @@ await withMock(async (base) => {
 });
 
 console.log('GROUP_CONSOLE_UNIT_OK mock presence+messages');
+
+await withMock(async (base) => {
+  const server = { baseUrl: base, auth: { username: 'root', password: 'root' } };
+  const groups = await wpListGroups(server);
+  assert.equal(groups.ok, true);
+  assert.ok(groups.groups.length >= 1);
+  const presence = await wpGetPresence(server);
+  assert.equal(presence.ok, true);
+  assert.ok(presence.onlineUserIds.includes('user-local'));
+
+  const group = await wpGetGroup(server, 'local-group-1');
+  assert.equal(group.ok, true);
+  assert.equal(group.group.id, 'local-group-1');
+  assert.ok(group.members.length >= 1);
+
+  const messages = await wpListGroupMessages(server, 'local-group-1', { limit: 20 });
+  assert.equal(messages.ok, true);
+  assert.ok(messages.messages.length >= 1);
+
+  const team = {
+    id: 'local-group-1',
+    name: 'local-canary',
+    coordinatorAgentName: 'Cursor Agent',
+  };
+  const stamped = await dispatchWorkPanel(server, team, '修一下', { petName: '林的Pet' });
+  assert.equal(stamped.ok, true);
+  assert.equal(stamped.status, 'accepted');
+  assert.equal(stamped.body.mentionedAgent, 'Cursor Agent');
+
+  const legacy = await dispatchWorkPanel(server, team, 'legacy prompt');
+  assert.equal(legacy.ok, true);
+  assert.equal(legacy.body.coordinatorAgent, 'Cursor Agent');
+  assert.equal(legacy.body.mentionedAgent, 'Cursor Agent');
+});
+
+console.log('GROUP_CONSOLE_UNIT_OK client groups+presence+dispatch');

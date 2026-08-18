@@ -4,6 +4,8 @@
  * Never bypass to invent worker URLs — only WP group APIs.
  */
 
+import { parseAgentMention, formatPetStamp } from './relay/petStamp.js';
+
 const tokenCache = new Map(); // baseUrl -> { token, expMs }
 
 function baseOf(server) {
@@ -66,6 +68,48 @@ export async function wpHealth(server, { timeoutMs = 3000 } = {}) {
   const base = baseOf(server);
   const res = await fetchJson(`${base}/api/health`, { timeoutMs });
   return res.ok && res.json?.ok !== false;
+}
+
+export async function wpListGroups(server, { timeoutMs = 5000 } = {}) {
+  const token = await wpLogin(server, { timeoutMs });
+  const res = await fetchJson(`${baseOf(server)}/api/groups`, { token, timeoutMs });
+  if (!res.ok || !Array.isArray(res.json)) {
+    return { ok: false, error: `wp list groups HTTP ${res.status}`, groups: [] };
+  }
+  return { ok: true, groups: res.json, error: null };
+}
+
+export async function wpGetGroup(server, groupId, { timeoutMs = 5000 } = {}) {
+  const token = await wpLogin(server, { timeoutMs });
+  const res = await fetchJson(
+    `${baseOf(server)}/api/groups/${encodeURIComponent(groupId)}`,
+    { token, timeoutMs }
+  );
+  if (!res.ok) return { ok: false, status: res.status, error: `wp group HTTP ${res.status}` };
+  return { ok: true, group: res.json.group || res.json, members: res.json.members || [] };
+}
+
+export async function wpGetPresence(server, { timeoutMs = 5000 } = {}) {
+  try {
+    const token = await wpLogin(server, { timeoutMs });
+    const res = await fetchJson(`${baseOf(server)}/api/presence`, { token, timeoutMs });
+    if (!res.ok) return { ok: false, onlineUserIds: [], error: `wp presence HTTP ${res.status}` };
+    return { ok: true, onlineUserIds: res.json.onlineUserIds || [], error: null };
+  } catch (err) {
+    return { ok: false, onlineUserIds: [], error: String(err.message || err) };
+  }
+}
+
+export async function wpListGroupMessages(server, groupId, { limit = 50, timeoutMs = 5000 } = {}) {
+  const token = await wpLogin(server, { timeoutMs });
+  const q = new URLSearchParams({ limit: String(Math.min(100, Math.max(1, Number(limit) || 50))) });
+  const res = await fetchJson(
+    `${baseOf(server)}/api/groups/${encodeURIComponent(groupId)}/messages?${q}`,
+    { token, timeoutMs }
+  );
+  if (!res.ok) return { ok: false, messages: [], error: `wp messages HTTP ${res.status}` };
+  const messages = Array.isArray(res.json?.messages) ? res.json.messages : [];
+  return { ok: true, messages, error: null };
 }
 
 export async function wpResolveGroup(server, team, token) {
@@ -157,7 +201,8 @@ export async function probeWorkPanel(server, team, { timeoutMs = 5000 } = {}) {
   }
 }
 
-export async function dispatchWorkPanel(server, team, prompt, { timeoutMs = 20000 } = {}) {
+export async function dispatchWorkPanel(server, team, prompt, options = {}) {
+  const { timeoutMs = 20000 } = options;
   try {
     const healthy = await wpHealth(server, { timeoutMs: Math.min(timeoutMs, 5000) });
     if (!healthy) {
@@ -192,7 +237,30 @@ export async function dispatchWorkPanel(server, team, prompt, { timeoutMs = 2000
       };
     }
 
-    const content = `@${coordinator.displayName} 【Connecter 调度】\n${prompt}`;
+    const mentionName = options.mentionAgentName || team.coordinatorAgentName;
+    const mention =
+      (mentionName &&
+        members.find((m) => m.kind === 'agent' && m.isActive && m.displayName === mentionName)) ||
+      coordinator;
+    if (!mention) {
+      return {
+        ok: false,
+        status: 'failed',
+        error: 'coordinator unavailable: no agent in group',
+        body: null,
+        taskId: null,
+      };
+    }
+
+    let content;
+    if (options.petName) {
+      const parsed = parseAgentMention(prompt, members);
+      const rest = parsed.ok && parsed.agent ? parsed.rest : String(prompt || '').trim();
+      content = `@${mention.displayName}\n${formatPetStamp(options.petName)}\n${rest}`.trim();
+    } else {
+      content = `@${mention.displayName} 【Connecter 调度】\n${prompt}`;
+    }
+
     const res = await fetchJson(`${baseOf(server)}/api/messages`, {
       method: 'POST',
       token,
@@ -201,7 +269,7 @@ export async function dispatchWorkPanel(server, team, prompt, { timeoutMs = 2000
         groupId: group.id,
         senderMemberId: sender.id,
         content,
-        mentionMemberIds: [coordinator.id],
+        mentionMemberIds: [mention.id],
       },
     });
 
@@ -227,6 +295,7 @@ export async function dispatchWorkPanel(server, team, prompt, { timeoutMs = 2000
         groupId: group.id,
         groupName: group.name,
         coordinatorAgent: coordinator.displayName,
+        mentionedAgent: mention.displayName,
         via: 'workpanel-api-messages',
       },
       taskId,
