@@ -116,7 +116,11 @@ export function createRelayServer(options = {}) {
           return send(res, h.status || 200, h.body || {});
         }
 
-      const auth = authenticateRequest(req, config);
+      const consolePath =
+        pathname === '/v1/groups' || pathname.startsWith('/v1/groups/');
+      const auth = authenticateRequest(req, config, {
+        rateBucket: consolePath ? 'console' : 'chat',
+      });
       if (!auth.ok) {
         return send(res, auth.status || 401, { error: auth.error });
       }
@@ -128,6 +132,24 @@ export function createRelayServer(options = {}) {
 
       if (req.method === 'GET' && pathname === '/v1/instances') {
         const h = handlers.instances(auth);
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname === '/v1/groups') {
+        const h = await handlers.groups(auth, {
+          env: url.searchParams.get('env'),
+        });
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname.startsWith('/v1/groups/')) {
+        const rest = decodeURIComponent(pathname.slice('/v1/groups/'.length));
+        if (!rest || rest.includes('/')) {
+          return send(res, 404, { error: 'not found', path: pathname });
+        }
+        const h = await handlers.group(auth, rest, {
+          env: url.searchParams.get('env'),
+        });
         return send(res, h.status, h.body);
       }
 

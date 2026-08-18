@@ -13,7 +13,11 @@ import { findRunnerByToken, touchRunner } from './runners.js';
 
 export { extractBearer, checkBearer as checkBearerLegacy } from './auth.js';
 
-export function authenticateRequest(req, config, { rateLimit = true } = {}) {
+export function authenticateRequest(
+  req,
+  config,
+  { rateLimit = true, rateBucket = 'chat', limitPerMin } = {}
+) {
   const token = extractBearer(req);
   if (!token) {
     return { ok: false, status: 401, error: 'missing bearer token' };
@@ -26,8 +30,12 @@ export function authenticateRequest(req, config, { rateLimit = true } = {}) {
       return { ok: false, status: 401, error: 'session revoked' };
     }
     if (rateLimit) {
-      const lim = config.rateLimitPerMin ?? 60;
-      const rl = checkRateLimit(session.pet_id, lim);
+      const lim =
+        limitPerMin ??
+        (rateBucket === 'console'
+          ? config.consoleRateLimitPerMin ?? 120
+          : config.rateLimitPerMin ?? 60);
+      const rl = checkRateLimit(session.pet_id, lim, rateBucket);
       if (!rl.ok) {
         return { ok: false, status: 429, error: rl.error };
       }

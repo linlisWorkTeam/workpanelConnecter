@@ -1,5 +1,15 @@
 import { resolveBackend, listEnvs } from './router.js';
-import { dispatchWorkPanel } from '../workpanelClient.js';
+import {
+  dispatchWorkPanel,
+  wpListGroups,
+  wpGetGroup,
+  wpGetPresence,
+} from '../workpanelClient.js';
+import {
+  toGroupListItem,
+  toGroupMember,
+  coordinatorAgentName,
+} from './groupConsole.js';
 import {
   resolveAgentInstance,
   listAgentInstancesForPet,
@@ -28,6 +38,19 @@ function backendAsServer(backend) {
 }
 
 export function createHandlers({ config }) {
+  function petBackend(auth, env) {
+    if (auth.kind !== 'pet') {
+      return { error: { status: 403, body: { error: 'pet token required' } } };
+    }
+    try {
+      const resolved = resolveBackend(config, env, { client: 'pet' });
+      return { resolved, server: backendAsServer(resolved.backend) };
+    } catch (err) {
+      const status = err.code === 'PROD_FORBIDDEN' ? 403 : 400;
+      return { error: { status, body: { error: err.message, code: err.code } } };
+    }
+  }
+
   return {
     health() {
       return {
@@ -50,6 +73,52 @@ export function createHandlers({ config }) {
       return {
         status: 200,
         body: { instances: listAgentInstancesForPet(auth.petId) },
+      };
+    },
+
+    async groups(auth, query = {}) {
+      const gate = petBackend(auth, query.env);
+      if (gate.error) return gate.error;
+      const listed = await wpListGroups(gate.server);
+      if (!listed.ok) {
+        return {
+          status: 502,
+          body: { error: listed.error || 'wp groups failed', code: 'WP_GROUPS_FAILED' },
+        };
+      }
+      return {
+        status: 200,
+        body: {
+          env: gate.resolved.env,
+          groups: listed.groups.map(toGroupListItem),
+        },
+      };
+    },
+
+    async group(auth, id, query = {}) {
+      const gate = petBackend(auth, query.env);
+      if (gate.error) return gate.error;
+      const got = await wpGetGroup(gate.server, id);
+      if (!got.ok) {
+        if (got.status === 404) {
+          return { status: 404, body: { error: got.error || 'group not found' } };
+        }
+        return {
+          status: 502,
+          body: { error: got.error || 'wp group failed', code: 'WP_GROUPS_FAILED' },
+        };
+      }
+      const presence = await wpGetPresence(gate.server);
+      const onlineUserIds = presence.ok ? presence.onlineUserIds : [];
+      const members = got.members || [];
+      return {
+        status: 200,
+        body: {
+          env: gate.resolved.env,
+          group: { id: got.group?.id, name: got.group?.name },
+          members: members.map((m) => toGroupMember(m, onlineUserIds)),
+          coordinatorAgent: coordinatorAgentName(members, gate.resolved.defaults),
+        },
       };
     },
 

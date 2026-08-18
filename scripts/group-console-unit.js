@@ -14,6 +14,7 @@ import {
   wpGetPresence,
   dispatchWorkPanel,
 } from '../src/workpanelClient.js';
+import { createHandlers } from '../src/relay/handlers.js';
 
 const members = [
   { id: 'u1', kind: 'user', displayName: '林', isActive: true },
@@ -120,3 +121,33 @@ await withMock(async (base) => {
 });
 
 console.log('GROUP_CONSOLE_UNIT_OK client groups+presence+dispatch');
+
+const handlers = createHandlers({
+  config: {
+    allowProdFromPet: false,
+    defaults: { env: 'canary', coordinatorAgentName: 'Cursor Agent' },
+    backends: {
+      canary: {
+        baseUrl: 'http://127.0.0.1:18081',
+        kind: 'workpanel',
+        auth: { username: 'root', password: 'root' },
+      },
+    },
+  },
+});
+
+await withMock(async () => {
+  const auth = { kind: 'pet', petId: 'pet-dev-1' };
+  const list = await handlers.groups(auth, { env: 'canary' });
+  assert.equal(list.status, 200);
+  assert.ok(list.body.groups.length >= 1);
+  const one = await handlers.group(auth, list.body.groups[0].id, { env: 'canary' });
+  assert.equal(one.status, 200);
+  assert.equal(typeof one.body.members[0].online, 'boolean');
+});
+
+const ops = await createHandlers({ config: { backends: { canary: { baseUrl: 'http://127.0.0.1:18081' } } } })
+  .groups({ kind: 'ops' }, {});
+assert.equal(ops.status, 403);
+
+console.log('GROUP_CONSOLE_UNIT_OK handlers groups+presence');

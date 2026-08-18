@@ -145,16 +145,17 @@ export function resolveAgentInstance(petId, { env, group, agent }) {
 /** Simple sliding-window rate limit: max N per minute per pet. */
 const buckets = new Map();
 
-export function checkRateLimit(petId, limitPerMin = 60) {
+export function checkRateLimit(petId, limitPerMin = 60, bucket = 'chat') {
   const now = Date.now();
   const windowMs = 60_000;
-  let arr = buckets.get(petId) || [];
+  const key = `${petId}:${bucket}`;
+  let arr = buckets.get(key) || [];
   arr = arr.filter((t) => now - t < windowMs);
   if (arr.length >= limitPerMin) {
-    buckets.set(petId, arr);
+    buckets.set(key, arr);
     return { ok: false, error: 'rate limit exceeded' };
   }
   arr.push(now);
-  buckets.set(petId, arr);
+  buckets.set(key, arr);
   return { ok: true };
 }
