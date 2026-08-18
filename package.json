@@ -21,6 +21,7 @@
     "gate:workpet": "node scripts/workpet-gate.js",
     "test:e2e-resume": "node scripts/e2e-resume-test.js",
     "test:relay-unit": "node scripts/relay-unit-smoke.js",
+    "test:group-console": "node scripts/group-console-unit.js",
     "test:runner": "node scripts/relay-runner-smoke.js",
     "gate:runner": "node scripts/relay-runner-smoke.js"
   },
