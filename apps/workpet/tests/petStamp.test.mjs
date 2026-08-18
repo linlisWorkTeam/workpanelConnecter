@@ -4,7 +4,13 @@ import fs from 'node:fs';
 import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
-import { matchAgentPrefix, renderMessageAuthor, stripPetStamp } from '../ui/petStamp.js';
+import {
+  isStaleGroupFetch,
+  matchAgentPrefix,
+  renderMessageAuthor,
+  shouldStartConsolePolling,
+  stripPetStamp,
+} from '../ui/petStamp.js';
 
 const sdkPath = fileURLToPath(new URL('../ui/connecterApi.js', import.meta.url));
 
@@ -77,6 +83,19 @@ test('chat body includes petName from options or cfg', () => {
     petName: 'optPet',
   });
   assert.equal(buildChatBody('hi', {}).petName, 'cfgPet');
+});
+
+test('shouldStartConsolePolling requires open panel and no pause', () => {
+  assert.equal(shouldStartConsolePolling({ panelOpen: true, consolePaused: false }), true);
+  assert.equal(shouldStartConsolePolling({ panelOpen: false, consolePaused: false }), false);
+  assert.equal(shouldStartConsolePolling({ panelOpen: true, consolePaused: true }), false);
+});
+
+test('isStaleGroupFetch detects group switch and collapsed panel', () => {
+  assert.equal(isStaleGroupFetch('g1', 'g1', true), false);
+  assert.equal(isStaleGroupFetch('g1', 'g2', true), true);
+  assert.equal(isStaleGroupFetch('g1', 'g1', false), true);
+  assert.equal(isStaleGroupFetch('', 'g1', true), true);
 });
 
 test('groups group groupMessages build expected paths', async () => {

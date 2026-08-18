@@ -7,7 +7,11 @@ import {
   normalizePetState,
   petWindowSize,
 } from './petConfig.js';
-import { renderMessageAuthor } from './petStamp.js';
+import {
+  isStaleGroupFetch,
+  renderMessageAuthor,
+  shouldStartConsolePolling,
+} from './petStamp.js';
 
 const $ = (id) => document.getElementById(id);
 const app = $('app');
@@ -314,11 +318,14 @@ async function checkConnection() {
 }
 
 async function loadGroupMembers({ showError = true } = {}) {
-  if (!client || !currentGroupId || consolePaused) return;
+  if (!client || !currentGroupId || consolePaused || !panelOpen) return;
+  const requestedId = currentGroupId;
   try {
-    const response = await client.group(currentGroupId, {});
+    const response = await client.group(requestedId, {});
+    if (isStaleGroupFetch(requestedId, currentGroupId, panelOpen)) return;
     renderMembers(response.members || []);
   } catch (error) {
+    if (isStaleGroupFetch(requestedId, currentGroupId, panelOpen)) return;
     if (error?.status === 429) {
       pauseConsolePolling();
       return;
@@ -328,15 +335,18 @@ async function loadGroupMembers({ showError = true } = {}) {
 }
 
 async function loadGroupMessages({ speakNew = false, showError = true } = {}) {
-  if (!client || !currentGroupId || consolePaused) return;
+  if (!client || !currentGroupId || consolePaused || !panelOpen) return;
+  const requestedId = currentGroupId;
   try {
-    const response = await client.groupMessages(currentGroupId, { limit: 50 });
+    const response = await client.groupMessages(requestedId, { limit: 50 });
+    if (isStaleGroupFetch(requestedId, currentGroupId, panelOpen)) return;
     const knownBefore = renderedMessageIds.size;
     for (const message of response.messages || []) {
       const isNew = !renderedMessageIds.has(message.id);
       ingestGroupMessage(message, { speak: speakNew && isNew && knownBefore > 0 });
     }
   } catch (error) {
+    if (isStaleGroupFetch(requestedId, currentGroupId, panelOpen)) return;
     if (error?.status === 429) {
       pauseConsolePolling();
       return;
@@ -347,6 +357,7 @@ async function loadGroupMessages({ speakNew = false, showError = true } = {}) {
 
 async function selectGroup(id) {
   if (!id) return;
+  if (!panelOpen) return;
   currentGroupId = id;
   persistGroupId(id);
   if (groupSelect.value !== id) groupSelect.value = id;
@@ -366,6 +377,7 @@ async function loadGroups() {
   }
   try {
     const response = await client.groups({});
+    if (!panelOpen) return;
     const groups = response.groups || [];
     groupSelect.innerHTML = '';
     if (!groups.length) {
@@ -382,8 +394,10 @@ async function loadGroups() {
     }
     const saved = readSavedGroupId();
     const pick = groups.some((g) => g.id === saved) ? saved : groups[0].id;
+    if (!panelOpen) return;
     await selectGroup(pick);
   } catch (error) {
+    if (!panelOpen) return;
     if (error?.status === 429) {
       setGroupSelectError('加载群列表失败（429）');
       pauseConsolePolling();
@@ -494,6 +508,7 @@ async function expand() {
     await win.setFocus();
   }
   await loadGroups();
+  if (!shouldStartConsolePolling({ panelOpen, consolePaused })) return;
   startConsolePolling();
   input.focus();
 }

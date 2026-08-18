@@ -31,3 +31,18 @@ export function renderMessageAuthor(msg, petName) {
   if (msg?.senderDisplayName) return String(msg.senderDisplayName);
   return petName ? String(petName) : '';
 }
+
+/** Whether expand() should start console polling after await loadGroups(). */
+export function shouldStartConsolePolling({ panelOpen, consolePaused }) {
+  return Boolean(panelOpen) && !consolePaused;
+}
+
+/**
+ * True when a members/messages fetch result must not be applied
+ * (group switched or panel collapsed while awaiting).
+ */
+export function isStaleGroupFetch(requestedId, currentId, panelOpen) {
+  if (!panelOpen) return true;
+  if (!requestedId || !currentId) return true;
+  return requestedId !== currentId;
+}
