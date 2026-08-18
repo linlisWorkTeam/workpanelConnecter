@@ -192,6 +192,19 @@ await withMock(async (base) => {
   assert.equal(legacy.ok, true);
   assert.equal(legacy.body.coordinatorAgent, 'Cursor Agent');
   assert.equal(legacy.body.mentionedAgent, 'Cursor Agent');
+
+  const formattedContent = '@Cursor Agent\n【WorkPet:林的Pet】\n修一下';
+  const skipWrap = await dispatchWorkPanel(server, team, 'ignored prompt', {
+    formattedContent,
+    petName: '林的Pet',
+    mentionAgentName: 'Cursor Agent',
+  });
+  assert.equal(skipWrap.ok, true);
+  assert.equal(skipWrap.status, 'accepted');
+  const lastPost = await fetch(`${base}/api/debug/last-messages-post`);
+  assert.equal(lastPost.status, 200);
+  const lastBody = await lastPost.json();
+  assert.equal(lastBody.body.content, formattedContent);
 });
 
 console.log('GROUP_CONSOLE_UNIT_OK client groups+presence+dispatch');

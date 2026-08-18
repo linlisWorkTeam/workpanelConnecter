@@ -40,6 +40,9 @@ const gateGroup = {
 };
 const groups = [group, gateGroup];
 
+/** Last successful POST /api/messages body (for unit assertions). */
+let lastMessagesPost = null;
+
 function groupState(target) {
   return { group: target, members: [user, agent] };
 }
@@ -142,10 +145,15 @@ const server = http.createServer(async (req, res) => {
     ) {
       return send(res, 400, { error: 'invalid message payload' });
     }
+    lastMessagesPost = body;
     return send(res, 200, {
       message: { id: `wp_msg_${randomUUID()}` },
       runIds: [`run_${randomUUID()}`],
     });
+  }
+
+  if (req.method === 'GET' && path === '/api/debug/last-messages-post') {
+    return send(res, 200, { body: lastMessagesPost });
   }
 
   return send(res, 404, { error: 'not found', path });
