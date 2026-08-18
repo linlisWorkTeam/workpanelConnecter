@@ -1,5 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
+import { spawn } from 'node:child_process';
+import { setTimeout as sleep } from 'node:timers/promises';
 import {
   parseAgentMention,
   applyPetStamp,
@@ -41,3 +43,37 @@ const members = [
 }
 
 console.log('GROUP_CONSOLE_UNIT_OK parsers');
+
+async function withMock(fn) {
+  const child = spawn(process.execPath, ['mock/workpanel-server.js'], {
+    env: { ...process.env, PORT: '18081' },
+    stdio: 'ignore',
+  });
+  await sleep(300);
+  try {
+    await fn('http://127.0.0.1:18081');
+  } finally {
+    child.kill();
+  }
+}
+
+await withMock(async (base) => {
+  const login = await fetch(`${base}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ username: 'root', password: 'root' }),
+  });
+  const { token } = await login.json();
+  const headers = { authorization: `Bearer ${token}` };
+  const presence = await fetch(`${base}/api/presence`, { headers });
+  assert.equal(presence.status, 200);
+  const p = await presence.json();
+  assert.equal(Array.isArray(p.onlineUserIds), true);
+
+  const msgs = await fetch(`${base}/api/groups/local-group-1/messages`, { headers });
+  assert.equal(msgs.status, 200);
+  const body = await msgs.json();
+  assert.equal(Array.isArray(body.messages), true);
+});
+
+console.log('GROUP_CONSOLE_UNIT_OK mock presence+messages');

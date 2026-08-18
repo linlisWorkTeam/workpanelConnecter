@@ -91,9 +91,33 @@ const server = http.createServer(async (req, res) => {
     return send(res, 200, groups);
   }
 
+  if (req.method === 'GET' && path === '/api/presence') {
+    return send(res, 200, { onlineUserIds: [user.id] });
+  }
+
+  const messagesMatch = path.match(/^\/api\/groups\/([^/]+)\/messages$/);
+  if (req.method === 'GET' && messagesMatch) {
+    const target = groups.find((g) => g.id === decodeURIComponent(messagesMatch[1]));
+    if (!target) return send(res, 404, { error: 'group not found' });
+    return send(res, 200, {
+      messages: [
+        {
+          id: 'wp_hist_1',
+          senderMemberId: user.id,
+          senderDisplayName: user.displayName,
+          senderKind: 'user',
+          content: 'hello from group',
+          mentionMemberIds: [],
+          ts: Date.now(),
+        },
+      ],
+    });
+  }
+
   if (req.method === 'GET' && path.startsWith('/api/groups/')) {
-    const requestedId = decodeURIComponent(path.slice('/api/groups/'.length));
-    const target = groups.find((g) => g.id === requestedId);
+    const rest = decodeURIComponent(path.slice('/api/groups/'.length));
+    if (rest.includes('/')) return send(res, 404, { error: 'not found', path });
+    const target = groups.find((g) => g.id === rest);
     if (!target) {
       return send(res, 404, { error: 'group not found' });
     }
