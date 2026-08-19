@@ -70,23 +70,23 @@ const members = [
 }
 
 {
+  const group = { adminMemberId: 'a1' };
   const hit = resolveChatTarget({
     prompt: '@Cursor Agent 修一下',
     members,
-    requestedAgent: null,
-    defaults: { coordinatorAgentName: 'Cursor Agent' },
+    group,
   });
   assert.equal(hit.ok, true);
   assert.equal(hit.agent.id, 'a1');
   assert.equal(hit.rest, '修一下');
+  assert.equal(hit.mentioned, true);
 }
 
 {
   const miss = resolveChatTarget({
     prompt: '@不存在的人 你好',
     members,
-    requestedAgent: null,
-    defaults: { coordinatorAgentName: 'Cursor Agent' },
+    group: { adminMemberId: 'a1' },
   });
   assert.equal(miss.ok, false);
   assert.equal(miss.code, 'UNKNOWN_MENTION');
@@ -96,65 +96,51 @@ const members = [
   const fallback = resolveChatTarget({
     prompt: '只是一句',
     members,
-    requestedAgent: null,
-    defaults: { coordinatorAgentName: 'Cursor Agent' },
+    group: { adminMemberId: 'a1' },
   });
   assert.equal(fallback.ok, true);
   assert.equal(fallback.agent.displayName, 'Cursor Agent');
   assert.equal(fallback.rest, '只是一句');
+  assert.equal(fallback.mentioned, false);
 }
 
 {
-  const requested = resolveChatTarget({
+  const requestedIgnored = resolveChatTarget({
     prompt: '只是一句',
     members,
+    group: { adminMemberId: 'a1' },
     requestedAgent: 'Cursor',
-    defaults: { coordinatorAgentName: 'Cursor Agent' },
   });
-  assert.equal(requested.ok, true);
-  assert.equal(requested.agent.displayName, 'Cursor');
-}
-
-{
-  const missingName = resolveChatTarget({
-    prompt: '只是一句',
-    members,
-    requestedAgent: '没有这个人',
-    defaults: {},
-  });
-  assert.equal(missingName.ok, true);
-  assert.equal(missingName.agent.displayName, 'Cursor Agent');
+  assert.equal(requestedIgnored.ok, true);
+  assert.equal(requestedIgnored.agent.displayName, 'Cursor Agent');
 }
 
 {
   const none = resolveChatTarget({
     prompt: '只是一句',
     members: [{ id: 'u1', kind: 'user', displayName: '林', isActive: true }],
-    requestedAgent: null,
-    defaults: { coordinatorAgentName: 'Cursor Agent' },
+    group: {},
   });
   assert.equal(none.ok, false);
-  assert.equal(none.code, 'NO_COORDINATOR');
-  assert.equal(none.error, 'no coordinator agent in group');
+  assert.equal(none.code, 'NO_ADMIN');
 }
 
 {
-  const inactiveNamed = [
+  const inactiveAdmin = [
     { id: 'a1', kind: 'agent', displayName: 'Cursor Agent', isActive: false },
     { id: 'a2', kind: 'agent', displayName: 'Cursor', isActive: true },
   ];
   assert.equal(
-    coordinatorAgentName(inactiveNamed, { coordinatorAgentName: 'Cursor Agent' }),
+    coordinatorAgentName(inactiveAdmin, { coordinatorAgentName: 'Cursor Agent' }),
     'Cursor'
   );
   const chat = resolveChatTarget({
     prompt: '只是一句',
-    members: inactiveNamed,
-    requestedAgent: null,
-    defaults: { coordinatorAgentName: 'Cursor Agent' },
+    members: inactiveAdmin,
+    group: { adminMemberId: 'a1' },
   });
-  assert.equal(chat.ok, true);
-  assert.equal(chat.agent.displayName, 'Cursor');
+  assert.equal(chat.ok, false);
+  assert.equal(chat.code, 'NO_ADMIN');
 }
 
 console.log('GROUP_CONSOLE_UNIT_OK parsers');
@@ -324,7 +310,8 @@ await withMock(async (base) => {
       { kind: 'pet', petId: 'pet-dev-1' }
     );
     assert.equal(unbound.status, 200);
-    assert.equal(unbound.body.mentionedAgent, 'Cursor Agent');
+    assert.equal(unbound.body.mentionedAgent, null);
+    assert.equal(unbound.body.coordinatorAgent, 'Cursor Agent');
   } finally {
     closeDb();
   }

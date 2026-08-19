@@ -5,6 +5,10 @@ import {
   wpGetGroup,
   wpGetPresence,
   wpListGroupMessages,
+  wpPresenceHeartbeat,
+  wpSession,
+  pickSender,
+  serverForPet,
 } from '../workpanelClient.js';
 import {
   toGroupListItem,
@@ -20,6 +24,7 @@ import {
   ensureAgentInstance,
 } from './registry.js';
 import { acceptUpMessage, pollMessages } from './messaging.js';
+import { pickAdminAgent } from './mentions.js';
 import { deliverWithRetry } from './delivery.js';
 import { db, getRun, getMessageById } from './db.js';
 import { formatPetStamp } from './petStamp.js';
@@ -51,7 +56,7 @@ export function createHandlers({ config }) {
     }
     try {
       const resolved = resolveBackend(config, env, { client: 'pet' });
-      return { resolved, server: backendAsServer(resolved.backend) };
+      return { resolved, server: serverForPet(resolved.backend, config, auth.petId) };
     } catch (err) {
       const status = err.code === 'PROD_FORBIDDEN' ? 403 : 400;
       return { error: { status, body: { error: err.message, code: err.code } } };
@@ -115,16 +120,31 @@ export function createHandlers({ config }) {
           body: { error: got.error || 'wp group failed', code: 'WP_GROUPS_FAILED' },
         };
       }
+      await wpPresenceHeartbeat(gate.server, { timeoutMs: 3000 });
+      let session = { userId: null };
+      try {
+        session = await wpSession(gate.server, { timeoutMs: 4000 });
+      } catch {
+        session = { userId: null };
+      }
       const presence = await wpGetPresence(gate.server);
       const onlineUserIds = presence.ok ? presence.onlineUserIds : [];
       const members = got.members || [];
+      const me = pickSender(got.group, members, { userId: session.userId });
+      const admin = pickAdminAgent(got.group, members);
       return {
         status: 200,
         body: {
           env: gate.resolved.env,
           group: { id: got.group?.id, name: got.group?.name },
-          members: members.map((m) => toGroupMember(m, onlineUserIds)),
-          coordinatorAgent: coordinatorAgentName(members, gate.resolved.defaults),
+          adminAgent: admin ? { id: admin.id, displayName: admin.displayName } : null,
+          selfMemberId: me?.id || null,
+          members: members.map((m) => {
+            const dto = toGroupMember(m, onlineUserIds);
+            const self = me ? m.id === me.id : false;
+            return { ...dto, self, online: dto.online || self };
+          }),
+          coordinatorAgent: admin?.displayName || coordinatorAgentName(members, gate.resolved.defaults),
         },
       };
     },
@@ -184,14 +204,18 @@ export function createHandlers({ config }) {
           };
         }
 
+        await wpPresenceHeartbeat(server, { timeoutMs: 3000 });
+
         const target = resolveChatTarget({
           prompt: String(prompt),
           members: got.members || [],
-          requestedAgent: body.agent || body.agentName,
-          defaults: resolved.defaults || {},
+          group: got.group,
         });
         if (!target.ok) {
-          return { status: 400, body: { error: target.error, code: target.code } };
+          return {
+            status: 400,
+            body: { error: target.error, code: target.code, mention: target.mention },
+          };
         }
 
         const instance = await ensureAgentInstance({
@@ -210,11 +234,15 @@ export function createHandlers({ config }) {
 
         const petName = body.petName;
         const formatted = `@${target.agent.displayName}\n${formatPetStamp(petName)}\n${target.rest}`.trim();
+        const mentionedAgent = target.mentioned ? target.agent.displayName : null;
+        const coordinatorAgent = target.agent.displayName;
+
         const accepted = await acceptUpMessage({
           messageId: body.id,
           agentInstance: instance,
           petId: auth.petId,
           content: formatted,
+          toAgentName: target.agent.displayName,
           payload: {
             content: formatted,
             formatted: true,
@@ -239,14 +267,18 @@ export function createHandlers({ config }) {
               seq: existing.seq,
               runIds: runs.map((r) => r.id),
               group: instance.group_id,
-              coordinatorAgent: instance.agent_name,
-              mentionedAgent: target.agent.displayName,
+              coordinatorAgent,
+              mentionedAgent,
             },
           };
         }
 
           // E2: runner-bound target -> enqueue (must have fresh heartbeat)
-          const runnerBinding = findRunnerBinding(instance);
+          const runnerBinding = findRunnerBinding({
+            env: instance.env,
+            group_id: instance.group_id,
+            agent_name: target.agent.displayName,
+          });
           if (runnerBinding) {
             if (!isRunnerHeartbeatFresh(runnerBinding, runnerHeartbeatTtlSec(config))) {
               return {
@@ -263,9 +295,9 @@ export function createHandlers({ config }) {
               env: instance.env,
               groupId: instance.group_id,
               groupName: instance.group_name,
-              agentName: instance.agent_name,
+              agentName: target.agent.displayName,
               upMessage: accepted.message,
-              content: String(prompt),
+              content: target.rest,
               context: { source: 'pet-chat' },
             });
             return {
@@ -277,8 +309,8 @@ export function createHandlers({ config }) {
                 seq: accepted.message.seq,
                 runIds: [task.id],
                 group: instance.group_id,
-                coordinatorAgent: instance.agent_name,
-                mentionedAgent: target.agent.displayName,
+                coordinatorAgent,
+                mentionedAgent,
                 runner: { agentId: runnerBinding.runner_id, channelId: runnerBinding.channel_id },
               },
             };
@@ -296,8 +328,8 @@ export function createHandlers({ config }) {
               seq: accepted.message.seq,
               error: delivered.error,
               group: instance.group_id,
-              coordinatorAgent: instance.agent_name,
-              mentionedAgent: target.agent.displayName,
+              coordinatorAgent,
+              mentionedAgent,
             },
           };
         }
@@ -312,8 +344,8 @@ export function createHandlers({ config }) {
             runIds: delivered.runIds || [],
             wpMessageId: delivered.wpMessageId,
             group: instance.group_id,
-            coordinatorAgent: instance.agent_name,
-            mentionedAgent: target.agent.displayName,
+            coordinatorAgent,
+            mentionedAgent,
           },
         };
       }
@@ -367,6 +399,56 @@ export function createHandlers({ config }) {
           runIds: result.body?.runIds || [],
           group,
           coordinatorAgent: result.body?.coordinatorAgent || agent,
+        },
+      };
+    },
+
+    async members(auth, { group, env }) {
+      const gate = petBackend(auth, env);
+      if (gate.error) return gate.error;
+      const groupKey = group || gate.resolved.defaults?.group;
+      if (!groupKey) {
+        return { status: 400, body: { error: 'group required' } };
+      }
+      let got = await wpGetGroup(gate.server, groupKey);
+      if (!got.ok) {
+        const listed = await wpListGroups(gate.server);
+        const hit =
+          listed.ok &&
+          (listed.groups || []).find((g) => g.id === groupKey || g.name === groupKey);
+        if (hit) got = await wpGetGroup(gate.server, hit.id);
+      }
+      if (!got.ok) {
+        return {
+          status: got.status === 404 ? 404 : 502,
+          body: { error: got.error || 'wp group failed' },
+        };
+      }
+      await wpPresenceHeartbeat(gate.server, { timeoutMs: 3000 });
+      let session = { userId: null };
+      try {
+        session = await wpSession(gate.server, { timeoutMs: 4000 });
+      } catch {
+        session = { userId: null };
+      }
+      const presence = await wpGetPresence(gate.server);
+      const onlineUserIds = presence.ok ? presence.onlineUserIds : [];
+      const members = got.members || [];
+      const me = pickSender(got.group, members, { userId: session.userId });
+      const admin = pickAdminAgent(got.group, members);
+      return {
+        status: 200,
+        body: {
+          env: gate.resolved.env,
+          groupId: got.group?.id,
+          groupName: got.group?.name,
+          adminAgent: admin ? { id: admin.id, displayName: admin.displayName } : null,
+          selfMemberId: me?.id || null,
+          members: members.map((m) => {
+            const dto = toGroupMember(m, onlineUserIds);
+            const self = me ? m.id === me.id : false;
+            return { ...dto, self, online: dto.online || self };
+          }),
         },
       };
     },

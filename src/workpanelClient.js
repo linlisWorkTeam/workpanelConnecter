@@ -1,22 +1,54 @@
 /**
  * WorkPanel HTTP client (canary/prod slots).
- * Connecter talks to WP as the "coordinator façade": health + group card + @mention dispatch.
- * Never bypass to invent worker URLs — only WP group APIs.
+ * Pet chat logs in as pets[].wpAuth (the human WP user). Facade backend.auth
+ * is only the fallback when wpAuth is omitted.
  */
 
 import { parseAgentMention, formatPetStamp } from './relay/petStamp.js';
+import { pickAdminAgent } from './relay/mentions.js';
 
-const tokenCache = new Map(); // baseUrl -> { token, expMs }
+const tokenCache = new Map(); // `${base}|${username}` -> { token, userId, username, expMs }
 
 function baseOf(server) {
   return String(server.baseUrl || '').replace(/\/$/, '');
 }
 
 function authOf(server) {
+  if (server.auth?.username) {
+    return {
+      username: server.auth.username,
+      password: server.auth.password || '',
+    };
+  }
   return {
-    username: process.env.CONNECTER_WP_USER || server.auth?.username || 'root',
-    password: process.env.CONNECTER_WP_PASS || server.auth?.password || 'root',
+    username: process.env.CONNECTER_WP_USER || 'root',
+    password: process.env.CONNECTER_WP_PASS || 'root',
   };
+}
+
+export function findPetConfig(config, petId) {
+  if (!config || !petId) return null;
+  return (config.pets || []).find((p) => p.id === petId) || null;
+}
+
+/** Overlay pets[].wpAuth onto a backend; WorkPet still only uses pet token. */
+export function serverForPet(backend, config, petId) {
+  const pet = findPetConfig(config, petId);
+  let auth = backend?.auth || {};
+  if (pet?.wpAuth?.username) {
+    auth = pet.wpAuth;
+  } else if (pet?.wpUsername) {
+    auth = { username: pet.wpUsername, password: pet.wpPassword || '' };
+  }
+  return {
+    kind: 'workpanel',
+    baseUrl: backend.baseUrl,
+    auth,
+  };
+}
+
+function loginCacheKey(base, username) {
+  return `${base}|${username}`;
 }
 
 async function fetchJson(url, { method = 'GET', token, body, timeoutMs = 8000 } = {}) {
@@ -45,12 +77,13 @@ async function fetchJson(url, { method = 'GET', token, body, timeoutMs = 8000 } 
   }
 }
 
-export async function wpLogin(server, { timeoutMs = 5000 } = {}) {
+export async function wpSession(server, { timeoutMs = 5000 } = {}) {
   const base = baseOf(server);
-  const cached = tokenCache.get(base);
-  if (cached && cached.expMs > Date.now()) return cached.token;
-
   const { username, password } = authOf(server);
+  const key = loginCacheKey(base, username);
+  const cached = tokenCache.get(key);
+  if (cached && cached.expMs > Date.now()) return cached;
+
   const res = await fetchJson(`${base}/api/auth/login`, {
     method: 'POST',
     body: { username, password },
@@ -59,9 +92,38 @@ export async function wpLogin(server, { timeoutMs = 5000 } = {}) {
   if (!res.ok || !res.json?.token) {
     throw new Error(`wp login failed HTTP ${res.status}`);
   }
-  // JWT exp unknown here — cache 10 minutes
-  tokenCache.set(base, { token: res.json.token, expMs: Date.now() + 10 * 60 * 1000 });
-  return res.json.token;
+  const info = {
+    token: res.json.token,
+    userId: res.json.userId || res.json.user_id || null,
+    username: res.json.username || username,
+    expMs: Date.now() + 10 * 60 * 1000,
+  };
+  tokenCache.set(key, info);
+  return info;
+}
+
+export async function wpLogin(server, { timeoutMs = 5000 } = {}) {
+  const session = await wpSession(server, { timeoutMs });
+  return session.token;
+}
+
+export async function wpPresenceHeartbeat(server, { timeoutMs = 4000 } = {}) {
+  try {
+    const session = await wpSession(server, { timeoutMs });
+    const res = await fetchJson(`${baseOf(server)}/api/presence/heartbeat`, {
+      method: 'POST',
+      token: session.token,
+      body: {},
+      timeoutMs,
+    });
+    if (res.status === 404) return { ok: false, skipped: true };
+    return {
+      ok: res.ok,
+      onlineUserIds: res.json?.onlineUserIds || [],
+    };
+  } catch {
+    return { ok: false, skipped: true };
+  }
 }
 
 export async function wpHealth(server, { timeoutMs = 3000 } = {}) {
@@ -153,25 +215,41 @@ export async function wpResolveGroup(server, team, token) {
   return { group: g, members };
 }
 
+export async function wpGroupContext(server, team, { timeoutMs = 8000 } = {}) {
+  const session = await wpSession(server, { timeoutMs });
+  return wpResolveGroup(server, team, session.token);
+}
+
 function pickCoordinatorAgent(group, members, team) {
   const preferName = team.coordinatorAgentName;
   if (preferName) {
-    const hit = members.find(
-      (m) => m.kind === 'agent' && m.isActive && m.displayName === preferName
+    return (
+      members.find(
+        (m) => m.kind === 'agent' && m.isActive !== false && m.displayName === preferName
+      ) || null
     );
-    if (hit) return hit;
   }
-  const adminId = group.adminMemberId;
-  const admin = members.find((m) => m.id === adminId);
-  if (admin && admin.kind === 'agent' && admin.isActive) return admin;
-  return members.find((m) => m.kind === 'agent' && m.isActive) || null;
+  return pickAdminAgent(group, members);
 }
 
-function pickSender(group, members) {
-  const ownerId = group.ownerMemberId;
-  const owner = members.find((m) => m.id === ownerId);
-  if (owner && owner.kind === 'user' && owner.isActive) return owner;
-  return members.find((m) => m.kind === 'user' && m.isActive) || null;
+function isActiveHuman(m) {
+  return (m.kind === 'user' || m.kind === 'pet') && m.isActive !== false;
+}
+
+/**
+ * Pet/user identity: member linked to the WP login (`authUserId`).
+ * Legacy: unlinked group owner (canary 「我」 has null authUserId) — façade only.
+ */
+export function pickSender(group, members, { userId } = {}) {
+  const list = members || [];
+  if (userId) {
+    const linked = list.find((m) => isActiveHuman(m) && m.authUserId === userId);
+    if (linked) return linked;
+  }
+  const ownerId = group?.ownerMemberId;
+  const owner = list.find((m) => m.id === ownerId);
+  if (owner && isActiveHuman(owner) && !owner.authUserId) return owner;
+  return null;
 }
 
 export function buildTeamCard(group, members, coordinator) {
@@ -200,8 +278,8 @@ export async function probeWorkPanel(server, team, { timeoutMs = 5000 } = {}) {
   try {
     const healthy = await wpHealth(server, { timeoutMs });
     if (!healthy) return { ok: false, error: 'wp /api/health failed', card: null };
-    const token = await wpLogin(server, { timeoutMs });
-    const { group, members } = await wpResolveGroup(server, team, token);
+    const session = await wpSession(server, { timeoutMs });
+    const { group, members } = await wpResolveGroup(server, team, session.token);
     const coordinator = pickCoordinatorAgent(group, members, team);
     if (!coordinator) {
       return { ok: false, error: 'no active agent coordinator in group', card: null };
@@ -230,10 +308,11 @@ export async function dispatchWorkPanel(server, team, prompt, options = {}) {
         taskId: null,
       };
     }
-    const token = await wpLogin(server, { timeoutMs: Math.min(timeoutMs, 5000) });
-    const { group, members } = await wpResolveGroup(server, team, token);
+    const session = await wpSession(server, { timeoutMs: Math.min(timeoutMs, 5000) });
+    await wpPresenceHeartbeat(server, { timeoutMs: 3000 });
+    const { group, members } = await wpResolveGroup(server, team, session.token);
     const coordinator = pickCoordinatorAgent(group, members, team);
-    const sender = pickSender(group, members);
+    const sender = pickSender(group, members, { userId: session.userId });
     if (!coordinator) {
       return {
         ok: false,
@@ -247,7 +326,7 @@ export async function dispatchWorkPanel(server, team, prompt, options = {}) {
       return {
         ok: false,
         status: 'failed',
-        error: 'no sender user in group',
+        error: 'no sender user linked to wp login (set pets[].wpAuth or bind member authUserId)',
         body: null,
         taskId: null,
       };
@@ -281,7 +360,7 @@ export async function dispatchWorkPanel(server, team, prompt, options = {}) {
 
     const res = await fetchJson(`${baseOf(server)}/api/messages`, {
       method: 'POST',
-      token,
+      token: session.token,
       timeoutMs,
       body: {
         groupId: group.id,
@@ -314,6 +393,8 @@ export async function dispatchWorkPanel(server, team, prompt, options = {}) {
         groupName: group.name,
         coordinatorAgent: coordinator.displayName,
         mentionedAgent: mention.displayName,
+        senderMemberId: sender.id,
+        senderDisplayName: sender.displayName,
         via: 'workpanel-api-messages',
       },
       taskId,

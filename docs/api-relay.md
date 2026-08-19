@@ -169,14 +169,15 @@ WP 若无 `unreadCount` 则字段省略。
 | `id` | 建议 | 幂等键；缺省服务端生成 `msg_*` |
 | `env` | 否 | 默认 canary；pet+prod 可能 403 `PROD_FORBIDDEN` |
 | `group` / `groupId` | pet 建议 | 门面可见的任意群（id 或 name）；**不要求**已有 `agent_instances` 行 |
-| `agent` / `agentName` | 否 | 显式值班 Agent；否则由 `@` 解析或协调者回退 |
+| `agent` / `agentName` | 否 | 展开面板可不传；无 `@` 时忽略，改打群管理员 |
 | `petName` | 否 | 最长 32 字，写入戳记；缺省 `WorkPet` |
 
-**@ 与协调者（pet）**
+**@ 与管理员（pet）**
 
-1. 从 `prompt` 按群成员 `displayName` 最长匹配 `@`；命中须为 `kind=agent`，否则 **400** `UNKNOWN_MENTION`（不转发 WP）。  
-2. 无 `@`：用请求体 `agent`/`agentName`（若有）→ env `defaults.coordinatorAgentName` → 群内第一个 `kind=agent && isActive`；都没有 → **400** `NO_COORDINATOR`。（启动时 `relay.json` 绑定仍 upsert 默认 `agent_instances`；chat 解析不再以绑定行作为进群门槛。）  
-3. 转发 WP 的正文形如：`@{agent}\n【WorkPet:{petName}】\n{rest}`。
+1. 从 `prompt` 按群成员 `displayName` 最长匹配 `@`（`@` 前须为空或空白）；命中须为 `kind=agent`，否则 **400** `UNKNOWN_MENTION`（不转发 WP）。  
+2. 无 `@`：只投递群 `adminMemberId` 且该成员为在线 Agent；否则 **400** `NO_ADMIN`（不再回落到「任意第一个 Agent」）。  
+3. 发送身份：`pets[].wpAuth` 登录的 WP 用户（绑定 `authUserId`）；省略则回落门面 `backends.*.auth`。  
+4. 转发 WP 的正文形如：`@{agent}\n【WorkPet:{petName}】\n{rest}`。
 
 **Pet 成功 200**
 
@@ -194,11 +195,11 @@ WP 若无 `unreadCount` 则字段省略。
 }
 ```
 
-`mentionedAgent` = 实际投递的 Agent 显示名（含 `@` 解析或协调者回退结果）。
+`coordinatorAgent` = 实际投递的 Agent。`mentionedAgent` = 正文里 `@` 命中的 Agent，无 `@` 时为 `null`。
 
 **幂等重放 200**：同 `id` 已存在 → `idempotent: true`，不二次转发 WP。  
 **投递失败**：可能 **502**（已死信，或 WP 群代理失败 `WP_GROUPS_FAILED`）或 **202**（仍 accepted 待续投）。  
-**403** `PROD_FORBIDDEN` · **401** 无/坏 token · **429** chat 限流 · **400** 缺 prompt / `UNKNOWN_MENTION` / `NO_COORDINATOR` / 无匹配群。
+**403** `PROD_FORBIDDEN` · **401** 无/坏 token · **429** chat 限流 · **400** 缺 prompt / `UNKNOWN_MENTION` / `NO_ADMIN` / 无匹配群。
 
 ### `GET /v1/messages?since=&group=&env=&agent=&limit=`
 
@@ -252,14 +253,19 @@ WP 若无 `unreadCount` 则字段省略。
 "pets": [{
   "id": "pet-dev-1",
   "token": "<secret>",
+  "wpAuth": { "username": "<WP 登录名>", "password": "<WP 密码>" },
   "groups": [
-    { "env": "canary", "groupId": "<uuid>", "groupName": "灰度测试", "agentName": "Cursor Agent" }
+    { "env": "canary", "groupId": "<uuid>", "groupName": "灰度测试" }
   ]
 }]
 ```
 
+`wpAuth` = 该桌宠对应的 **WP 用户**（群里 `kind=user` 且 `authUserId` 已绑定）。省略时回落 `backends.*.auth` 门面账号。WorkPet **不**直连 WP，仍只用 pet token。
+
 启动时 upsert `pets` / `agent_instances` / `sessions`。动态 `POST /v1/register` = 二期。  
 `pets[].groups` 仍是默认值班绑定；**不**限制 `/v1/groups*` 或 chat 的门面可见群范围（见 §1.3 G11）。
+
+`GET /v1/members`：`selfMemberId` + 成员 `self` / `online`（用户在线来自 WP `GET /api/presence`；Pet 心跳 `POST /api/presence/heartbeat`）。展开面板主路径仍是 `GET /v1/groups*`。
 
 ---
 

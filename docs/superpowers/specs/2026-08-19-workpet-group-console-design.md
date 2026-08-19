@@ -12,15 +12,16 @@
 | G1 | 桌宠仍是主界面；**展开后**是迷你群控制台：切群、成员在线、`@Agent` 调度、最近群消息 |
 | G2 | 桌宠**只连 Connecter**（pet token）；不直连 WorkPanel，本期**不做** WorkPet 上的 WP 登录态 |
 | G3 | 切群范围 = 门面账号在**当前 env** 的 WP 上能进入的全部群（不限于 `relay.json` 的 `pets[].groups`） |
-| G4 | 线上发送仍用现有 Connecter **门面账号**代发（`workpanelClient` 的 sender + `POST /api/messages`） |
+| G4 | 未配 `pets[].wpAuth` 时可用门面账号代发；配了则以该 WP 用户发言（G12） |
 | G5 | 控制台里本宠气泡显示配置中的 `petName`（如「林的Pet」），不显示门面用户名 |
 | G6 | `@显示名` 只改投递目标（`mentionMemberIds` + 正文 `@`）；对不上则**拒绝发送并提示** |
-| G7 | 无 `@` 时行为与现在一致：投配置/群内值班 Agent |
+| G7 | 无 `@` 时：**只**投该群配置的**管理员**（值班/协调）。**未配置管理员 → 不发送、无人答复**（禁止再默认点名 Cursor Agent 或任意 Agent） |
+| G7a | **不是**「打开 Pet 就去找某某 Agent」。调度目标 **只**由「有没有 @ / @了谁」决定；`@` 自动补全与 WP 相同 |
 | G8 | 用户在线 = WP `GET /api/presence` 的 `onlineUserIds`；Agent 在线 = 群成员 `isActive` |
 | G9 | 最近消息 = 代理 WP `GET /api/groups/{id}/messages`，默认约 50 条；**不**用现有 `GET /v1/messages` ack 日志做主列表 |
 | G10 | 现有 `GET /v1/messages` / 幂等 chat / pet→prod 403 不回归 |
 | G11 | pet token 可读可写范围升到与门面账号同一组群；必须写进 `api-relay.md` |
-| G12 | **下一步（本期不实现）**：WP 承认 Pet 成员身份；WorkPet 再做登录态。见 §8 |
+| G12 | **进行中（Connecter 已写；WP heartbeat 待 canary）**：Pet = WP 用户；`wpAuth` + HTTP presence。见 §8 |
 
 ## 2. 目标与非目标
 
@@ -189,20 +190,18 @@ WP 若无 `unreadCount` 则省略或给 `0`。失败 → **502** `{ "error": "�
 6. `GET /v1/messages` ack 契约与既有门禁不回归  
 7. `docs/NEXT-DEV-PATH.md` 记载 WP Pet 身份诉求（§8）
 
-## 8. 下一步规划（给 WorkPanel 的诉求，本期不实现）
+## 8. Pet = 用户（G12，2026-08-19 收口）
 
-**问题：** 群里真实发送者仍是门面账号；桌宠只在自己的 UI 里把气泡标成「XXX的Pet」。两边身份不一致。
+**问题：** 群里真实发送者曾是门面账号；桌宠只在自己的 UI 里把气泡标成「XXX的Pet」。
 
-**诉求（WP）：**
+**已落地（代码）：**
 
-1. 承认 **Pet 成员**（`kind=pet` 或等价）：可登录或由 Connecter 代登记，出现在 `GET /api/groups/{id}` 的 members 里。  
-2. `POST /api/messages` 允许 `senderMemberId` 为该 Pet 成员（或提供 pet token 映射），群聊作者为「XXX的Pet」。  
-3. 在线：Pet 心跳进入 `GET /api/presence`（或单独 pet presence）。  
-4. Connecter 不再用群 owner 用户冒名发送。
+1. **不**新增 `kind=pet`。Pet = 已绑定 `authUserId` 的 `kind=user` 成员。
+2. Connecter `pets[].wpAuth` 登录该用户；`senderMemberId` 为其成员；不再用「任意活跃用户」或优先 owner 冒名（owner 仅当 `authUserId` 为空时的遗留回退）。
+3. WP `POST /api/presence/heartbeat`（TTL 90s）+ Connecter 在 members/chat 时心跳。`GET /api/presence` 含 HTTP 在线。
+4. WorkPet 仍只持 pet token（G2）；WP 账号只存在 `relay.json`。
 
-**之后才做：** WorkPet 登录态（WP 或 Connecter 颁发的 pet 身份），替换 G4 门面代发。
-
-跟踪项：`docs/NEXT-DEV-PATH.md` **P2.5**。
+**未完成：** WP canary 未部署 heartbeat；灰度 owner「我」未绑 `auth_user_id`。WorkPet 不做 WP 登录页。
 
 ## 9. 实现落点（供计划，非本期编码）
 

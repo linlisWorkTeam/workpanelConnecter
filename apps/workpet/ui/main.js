@@ -43,7 +43,54 @@ let msgPollTimer = null;
 let memberPollTimer = null;
 let bubbleTimer = null;
 let panelOpen = false;
-let sending = false;
+let membersCache = [];
+
+function hideMentions() {
+  const menu = $('mentionMenu');
+  if (!menu) return;
+  menu.classList.add('is-hidden');
+  menu.hidden = true;
+  menu.innerHTML = '';
+}
+
+function showMentions(q) {
+  const menu = $('mentionMenu');
+  if (!menu) return;
+  const agents = membersCache.filter((m) => m.kind === 'agent' && m.isActive !== false);
+  const needle = String(q || '').toLowerCase();
+  const hits = agents.filter((m) => String(m.displayName || '').toLowerCase().includes(needle));
+  if (!hits.length) {
+    hideMentions();
+    return;
+  }
+  menu.innerHTML = hits
+    .slice(0, 8)
+    .map(
+      (m, i) =>
+        `<li data-name="${String(m.displayName).replace(/"/g, '&quot;')}" class="${i === 0 ? 'active' : ''}">${m.displayName}<span class="kind">agent</span></li>`
+    )
+    .join('');
+  menu.classList.remove('is-hidden');
+  menu.hidden = false;
+}
+
+function applyMention(name) {
+  const cur = input.value;
+  const at = cur.lastIndexOf('@');
+  input.value = `${cur.slice(0, at + 1)}${name} `;
+  hideMentions();
+  input.focus();
+}
+
+async function loadMembers() {
+  if (!client) return;
+  try {
+    const row = await client.members({ group: currentGroupId || cfg.group });
+    membersCache = row.members || [];
+  } catch (_) {
+    if (!membersCache.length) membersCache = agentMembers;
+  }
+}
 let petScale = 1;
 let currentGroupId = '';
 let consolePaused = false;
@@ -204,6 +251,7 @@ function ingestGroupMessage(msg, { speak = false } = {}) {
 }
 
 function refreshAgentDatalist() {
+  if (!agentMentions) return;
   agentMentions.innerHTML = '';
   for (const member of agentMembers) {
     const option = document.createElement('option');
@@ -215,6 +263,7 @@ function refreshAgentDatalist() {
 function renderMembers(members) {
   memberStrip.innerHTML = '';
   agentMembers = (members || []).filter((m) => m && m.kind === 'agent' && m.displayName);
+  if (members?.length) membersCache = members;
   refreshAgentDatalist();
 
   for (const member of members || []) {
@@ -412,6 +461,7 @@ async function selectGroup(id) {
   agentMembers = [];
   refreshAgentDatalist();
   await Promise.all([loadGroupMembers(), loadGroupMessages({ speakNew: false })]);
+  await loadMembers();
 }
 
 async function loadGroups() {
@@ -478,6 +528,7 @@ async function send() {
 
   sending = true;
   sendBtn.disabled = true;
+  hideMentions();
   setPetState('thinking');
   input.value = '';
 
@@ -595,6 +646,7 @@ async function expand() {
     await win.setFocus();
   }
   await loadGroups();
+  await loadMembers();
   if (!shouldStartConsolePolling({ panelOpen, consolePaused })) return;
   startConsolePolling();
   input.focus();
@@ -625,6 +677,7 @@ async function init() {
   setPetState('idle');
   applyConfig(config);
   await checkConnection();
+  await loadMembers();
 
   $('petHit').addEventListener('click', interact);
   $('openChatBtn').addEventListener('click', expand);
@@ -642,7 +695,23 @@ async function init() {
   });
   $('composer').addEventListener('submit', (event) => {
     event.preventDefault();
+    hideMentions();
     send();
+  });
+  input.addEventListener('input', () => {
+    const cur = input.value;
+    const at = cur.lastIndexOf('@');
+    if (at < 0 || /\s/.test(cur.slice(at))) {
+      hideMentions();
+      return;
+    }
+    showMentions(cur.slice(at + 1));
+  });
+  $('mentionMenu')?.addEventListener('mousedown', (event) => {
+    const li = event.target.closest('li[data-name]');
+    if (!li) return;
+    event.preventDefault();
+    applyMention(li.dataset.name);
   });
   document.addEventListener('keydown', (event) => {
     if (!event.ctrlKey || panelOpen) return;

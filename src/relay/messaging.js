@@ -42,13 +42,14 @@ export async function acceptUpMessage({
   petId,
   content,
   payload,
+  toAgentName,
 }) {
   const envelope = makeEnvelope({
     id: messageId || `msg_${randomUUID()}`,
     direction: 'up',
     conversation: agentInstance.group_id,
     from: { kind: 'pet', id: petId },
-    to: { kind: 'agent', id: agentInstance.agent_name },
+    to: { kind: 'agent', id: toAgentName || agentInstance.agent_name },
     content,
     payload: payload || { content },
     ack: 'accepted',

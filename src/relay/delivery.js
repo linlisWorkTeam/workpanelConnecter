@@ -1,6 +1,6 @@
 import { listPendingAccepted, db } from './db.js';
 import { markDelivered, markFailed } from './messaging.js';
-import { dispatchWorkPanel } from '../workpanelClient.js';
+import { dispatchWorkPanel, serverForPet } from '../workpanelClient.js';
 import { enqueueRunnerTask, findRunnerBinding, isRunnerHeartbeatFresh, runnerHeartbeatTtlSec } from './runners.js';
 
 function sleep(ms) {
@@ -30,7 +30,11 @@ export async function deliverOnce(config, messageRow) {
     return { ok: false, error: 'prod forbidden' };
   }
 
-  const binding = findRunnerBinding(instance);
+  const targetAgentName = envelope.to?.id || instance.agent_name;
+  const binding = findRunnerBinding({
+    ...instance,
+    agent_name: targetAgentName,
+  });
   if (binding) {
     if (!isRunnerHeartbeatFresh(binding, runnerHeartbeatTtlSec(config))) {
       await markFailed(messageRow.id, 'runner_offline', 3);
@@ -42,7 +46,7 @@ export async function deliverOnce(config, messageRow) {
       env: instance.env,
       groupId: instance.group_id,
       groupName: instance.group_name,
-      agentName: instance.agent_name,
+      agentName: targetAgentName,
       upMessage: messageRow,
       content: envelope.payload?.content || '',
     });
@@ -56,11 +60,13 @@ export async function deliverOnce(config, messageRow) {
     return { ok: false, error: 'unknown env' };
   }
 
-  const server = backendAsServer(backend);
+  const server = instance.pet_id
+    ? serverForPet(backend, config, instance.pet_id)
+    : backendAsServer(backend);
   const team = {
     id: instance.group_id,
     name: instance.group_name || instance.group_id,
-    coordinatorAgentName: instance.agent_name,
+    coordinatorAgentName: targetAgentName,
   };
   const payload = envelope.payload || {};
   const content = payload.content || '';

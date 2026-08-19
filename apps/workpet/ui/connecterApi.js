@@ -110,9 +110,16 @@
           since: String(since),
           env: o.env || defaults.env,
           group: o.group || defaults.group,
-          agent: o.agent || defaults.agent,
         });
         return request('/v1/messages?' + q.toString());
+      },
+      /** GET /v1/members?group= （@ 补全） */
+      members: (o = {}) => {
+        const q = new URLSearchParams({
+          env: o.env || defaults.env,
+          group: o.group || defaults.group,
+        });
+        return request('/v1/members?' + q.toString());
       },
       /** GET /v1/runs/{id} */
       runs: (id) => request('/v1/runs/' + encodeURIComponent(id)),

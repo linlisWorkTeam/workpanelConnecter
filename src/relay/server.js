@@ -117,7 +117,9 @@ export function createRelayServer(options = {}) {
         }
 
       const consolePath =
-        pathname === '/v1/groups' || pathname.startsWith('/v1/groups/');
+        pathname === '/v1/groups' ||
+        pathname.startsWith('/v1/groups/') ||
+        pathname === '/v1/members';
       const auth = authenticateRequest(req, config, {
         rateBucket: consolePath ? 'console' : 'chat',
       });
@@ -169,6 +171,14 @@ export function createRelayServer(options = {}) {
       if (req.method === 'POST' && pathname === '/v1/chat') {
         const body = await readJson(req);
         const h = await handlers.chat(body, auth);
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname === '/v1/members') {
+        const h = await handlers.members(auth, {
+          group: url.searchParams.get('group'),
+          env: url.searchParams.get('env'),
+        });
         return send(res, h.status, h.body);
       }
 

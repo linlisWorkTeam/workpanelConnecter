@@ -19,6 +19,7 @@ const user = {
   kind: 'user',
   isActive: true,
   displayName: 'Local User',
+  authUserId: 'local-user-auth',
 };
 const agent = {
   id: 'agent-local',
@@ -84,7 +85,20 @@ const server = http.createServer(async (req, res) => {
     if (!body.username || !body.password) {
       return send(res, 401, { error: 'invalid credentials' });
     }
-    return send(res, 200, { token: `mock-wp-token-${randomUUID()}` });
+    return send(res, 200, {
+      token: `mock-wp-token-${randomUUID()}`,
+      user_id: 'local-user-auth',
+      username: body.username,
+      isAdmin: body.username === 'root',
+    });
+  }
+
+  if (req.method === 'GET' && path === '/api/presence') {
+    return send(res, 200, { onlineUserIds: ['local-user-auth', user.id] });
+  }
+
+  if (req.method === 'POST' && path === '/api/presence/heartbeat') {
+    return send(res, 200, { ok: true, ttlMs: 90000, onlineUserIds: ['local-user-auth'] });
   }
 
   if (req.method === 'GET' && path === '/api/groups') {
@@ -92,10 +106,6 @@ const server = http.createServer(async (req, res) => {
       return send(res, 401, { error: 'authorization required' });
     }
     return send(res, 200, groups);
-  }
-
-  if (req.method === 'GET' && path === '/api/presence') {
-    return send(res, 200, { onlineUserIds: [user.id] });
   }
 
   const messagesMatch = path.match(/^\/api\/groups\/([^/]+)\/messages$/);
