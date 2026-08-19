@@ -1,3 +1,10 @@
+export function readXiaoaiEnabled(cfg, storageGet) {
+  const stored = storageGet && storageGet('workpet.xiaoaiAnnounce');
+  if (stored === '1' || stored === 'true') return true;
+  if (stored === '0' || stored === 'false') return false;
+  return Boolean(cfg && cfg.xiaoaiAnnounce);
+}
+
 export async function postXiaoaiAnnounce({
   enabled,
   homepageBaseUrl,

@@ -13,6 +13,7 @@ import {
   renderMessageAuthor,
   shouldStartConsolePolling,
 } from './petStamp.js';
+import { readXiaoaiEnabled } from './xiaoaiAnnounce.js';
 
 const $ = (id) => document.getElementById(id);
 const app = $('app');
@@ -30,6 +31,7 @@ const loadingHint = $('loadingHint');
 const PANEL_SIZE = { width: 440, height: 680 };
 const PET_SCALE_STORAGE_KEY = 'workpet.petScale';
 const GROUP_ID_STORAGE_KEY = 'workpet.groupId';
+const XIAOAI_STORAGE_KEY = 'workpet.xiaoaiAnnounce';
 const MEMBER_POLL_MS = 10000;
 
 let client = null;
@@ -298,6 +300,44 @@ function applyConfig(value) {
   } else if (cfg.connecterBaseUrl && cfg.token) {
     addMsg('Connecter SDK 未加载，聊天暂不可用。', 'err');
   }
+  cfg.xiaoaiAnnounce = readXiaoaiEnabled(cfg, (key) => {
+    try { return localStorage.getItem(key); } catch (_) { return null; }
+  });
+  syncXiaoaiToggleUi(cfg.xiaoaiAnnounce);
+}
+
+function syncXiaoaiToggleUi(on) {
+  const pressed = on ? 'true' : 'false';
+  for (const id of ['xiaoaiToggle', 'xiaoaiTogglePanel']) {
+    const btn = $(id);
+    if (!btn) continue;
+    btn.setAttribute('aria-pressed', pressed);
+    btn.classList.toggle('is-on', on);
+  }
+}
+
+async function setXiaoaiEnabled(on) {
+  cfg.xiaoaiAnnounce = Boolean(on);
+  syncXiaoaiToggleUi(cfg.xiaoaiAnnounce);
+  try {
+    localStorage.setItem(XIAOAI_STORAGE_KEY, cfg.xiaoaiAnnounce ? '1' : '0');
+  } catch (_) { /* ignore */ }
+  if (window.__TAURI__?.core) {
+    try {
+      await window.__TAURI__.core.invoke('set_config', {
+        patch: JSON.stringify({ xiaoaiAnnounce: cfg.xiaoaiAnnounce }),
+      });
+    } catch (error) {
+      addMsg(`配置写入失败：${error.message || error}`, 'err');
+    }
+  }
+  if (cfg.xiaoaiAnnounce) {
+    const base = String(cfg.homepageBaseUrl || '').trim();
+    const token = String(cfg.homepagePetToken || '').trim();
+    if (!base || !token) {
+      addMsg('请先配置 homepageBaseUrl 和 homepagePetToken。', 'err');
+    }
+  }
 }
 
 async function checkConnection() {
@@ -545,6 +585,8 @@ async function init() {
   $('collapseBtn').addEventListener('click', collapse);
   $('sizeDownBtn').addEventListener('click', () => resizePet(-1));
   $('sizeUpBtn').addEventListener('click', () => resizePet(1));
+  $('xiaoaiToggle').addEventListener('click', () => setXiaoaiEnabled(!cfg.xiaoaiAnnounce));
+  $('xiaoaiTogglePanel').addEventListener('click', () => setXiaoaiEnabled(!cfg.xiaoaiAnnounce));
   groupSelect.addEventListener('change', () => {
     if (groupSelect.value) selectGroup(groupSelect.value);
   });

@@ -144,6 +144,14 @@ button { -webkit-app-region: no-drag; }
   transform: none;
 }
 
+.xiaoai-toggle {
+  color: #8a93a8;
+}
+
+.xiaoai-toggle.is-on {
+  color: #7dffb3;
+}
+
 .size-btn {
   width: 28px;
   font-size: 10px;
@@ -300,6 +308,12 @@ button { -webkit-app-region: no-drag; }
   justify-content: space-between;
   padding: 15px 17px 10px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.panel-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 .panel-head h1,

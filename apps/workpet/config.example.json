@@ -6,6 +6,9 @@
   "agent": "Cursor Agent",
   "pollIntervalMs": 2000,
   "maxRunPolls": 30,
+  "xiaoaiAnnounce": false,
+  "homepageBaseUrl": "http://127.0.0.1:8000",
+  "homepagePetToken": "REPLACE_WITH_HOMEPAGE_XIAOMI_PET_TOKEN",
   "ui": {
     "petScale": 1.0
   },

@@ -15,6 +15,9 @@
         <span id="petName">WorkPet</span>
       </div>
       <div class="top-actions">
+        <button id="xiaoaiToggle" class="icon-btn xiaoai-toggle" type="button" aria-pressed="false" aria-label="小爱播报" title="小爱播报">
+          <span aria-hidden="true">♪</span>
+        </button>
         <div class="size-control" aria-label="调整桌宠大小">
           <button id="sizeDownBtn" class="icon-btn size-btn" type="button" title="缩小桌宠" aria-label="缩小桌宠">A−</button>
           <button id="sizeUpBtn" class="icon-btn size-btn" type="button" title="放大桌宠" aria-label="放大桌宠">A+</button>
@@ -49,7 +52,12 @@
           <p class="eyebrow">CONNECTED SPACE</p>
           <select id="groupSelect" class="group-select" aria-label="切换群聊"></select>
         </div>
-        <span id="connectionBadge" class="connection-badge">未连接</span>
+        <div class="panel-head-actions">
+          <button id="xiaoaiTogglePanel" class="icon-btn xiaoai-toggle" type="button" aria-pressed="false" aria-label="小爱播报" title="小爱播报">
+            <span aria-hidden="true">♪</span>
+          </button>
+          <span id="connectionBadge" class="connection-badge">未连接</span>
+        </div>
       </div>
       <div id="memberStrip" class="member-strip" aria-label="群成员"></div>
       <div id="msgList" class="msg-list" aria-live="polite"></div>
