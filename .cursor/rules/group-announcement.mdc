@@ -5,4 +5,6 @@ alwaysApply: true
 
 # 群公告 / 项目级规则
 
-该项目用来解决多Workpanel间交互的问题
+该项目用来解决多Workpanel间交互的问题。
+
+后续 Agent 开工前读 `docs/epitaph/`（墓志铭 / 会话交接）。

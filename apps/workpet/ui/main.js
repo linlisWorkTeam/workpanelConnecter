@@ -15,6 +15,8 @@ import {
   shouldAnnounceRun,
   shouldStartConsolePolling,
   formatXiaoaiAnnounce,
+  envOptionLabel,
+  petSelectableEnvs,
 } from './petStamp.js';
 import { postXiaoaiAnnounce, readXiaoaiEnabled } from './xiaoaiAnnounce.js';
 
@@ -25,6 +27,7 @@ const msgList = $('msgList');
 const input = $('input');
 const sendBtn = $('sendBtn');
 const groupSelect = $('groupSelect');
+const envSelect = $('envSelect');
 const memberStrip = $('memberStrip');
 const agentMentions = $('agentMentions');
 const connectionBadge = $('connectionBadge');
@@ -43,6 +46,7 @@ let msgPollTimer = null;
 let memberPollTimer = null;
 let bubbleTimer = null;
 let panelOpen = false;
+let sending = false;
 let membersCache = [];
 
 function hideMentions() {
@@ -133,9 +137,13 @@ function readSavedPetScale(config) {
   return normalizePetScale(config?.ui?.petScale);
 }
 
+function groupStorageKey() {
+  return `${GROUP_ID_STORAGE_KEY}.${cfg.env || 'canary'}`;
+}
+
 function readSavedGroupId() {
   try {
-    return localStorage.getItem(GROUP_ID_STORAGE_KEY) || '';
+    return localStorage.getItem(groupStorageKey()) || localStorage.getItem(GROUP_ID_STORAGE_KEY) || '';
   } catch (_) {
     return '';
   }
@@ -143,7 +151,7 @@ function readSavedGroupId() {
 
 function persistGroupId(id) {
   try {
-    if (id) localStorage.setItem(GROUP_ID_STORAGE_KEY, id);
+    if (id) localStorage.setItem(groupStorageKey(), id);
   } catch (_) { /* 仅本次有效 */ }
 }
 
@@ -313,6 +321,17 @@ function setMemberStripError(text) {
   memberStrip.appendChild(el);
 }
 
+function setEnvSelectError(text) {
+  if (!envSelect) return;
+  envSelect.innerHTML = '';
+  const option = document.createElement('option');
+  option.value = '';
+  option.textContent = text;
+  option.disabled = true;
+  option.selected = true;
+  envSelect.appendChild(option);
+}
+
 function setGroupSelectError(text) {
   groupSelect.innerHTML = '';
   const option = document.createElement('option');
@@ -391,6 +410,67 @@ async function setXiaoaiEnabled(on) {
       addMsg('请先配置 homepageBaseUrl 和 homepagePetToken。', 'err');
     }
   }
+}
+
+async function persistEnv(name) {
+  const env = String(name || '').trim();
+  if (!env) return;
+  cfg.env = env;
+  applyConfig(cfg);
+  if (window.__TAURI__?.core) {
+    try {
+      await window.__TAURI__.core.invoke('set_config', {
+        patch: JSON.stringify({ env }),
+      });
+    } catch (error) {
+      addMsg(`配置写入失败：${error.message || error}`, 'err');
+    }
+  }
+}
+
+async function loadEnvs() {
+  if (!envSelect) return;
+  if (!client) {
+    setEnvSelectError('未连接 Connecter');
+    return;
+  }
+  try {
+    const response = await client.envs();
+    if (!panelOpen) return;
+    const envs = petSelectableEnvs(response.envs || []);
+    envSelect.innerHTML = '';
+    if (!envs.length) {
+      setEnvSelectError('暂无服务器');
+      return;
+    }
+    for (const row of envs) {
+      const option = document.createElement('option');
+      option.value = row.name;
+      option.textContent = envOptionLabel(row);
+      envSelect.appendChild(option);
+    }
+    const pick = envs.some((e) => e.name === cfg.env) ? cfg.env : envs[0].name;
+    envSelect.value = pick;
+    if (pick !== cfg.env) await persistEnv(pick);
+  } catch (error) {
+    if (!panelOpen) return;
+    setEnvSelectError(`服务器列表失败：${error.message}`);
+  }
+}
+
+async function selectEnv(name) {
+  if (!name) return;
+  if (name === cfg.env) return;
+  await persistEnv(name);
+  currentGroupId = '';
+  renderedMessageIds.clear();
+  pendingOptimistic.clear();
+  msgList.innerHTML = '';
+  memberStrip.innerHTML = '';
+  agentMembers = [];
+  membersCache = [];
+  await loadGroups();
+  await loadMembers();
 }
 
 async function checkConnection() {
@@ -645,6 +725,7 @@ async function expand() {
     await win.setSize(logicalSize(PANEL_SIZE));
     await win.setFocus();
   }
+  await loadEnvs();
   await loadGroups();
   await loadMembers();
   if (!shouldStartConsolePolling({ panelOpen, consolePaused })) return;
@@ -689,6 +770,9 @@ async function init() {
   $('xiaoaiTogglePanel').addEventListener('click', () => setXiaoaiEnabled(!cfg.xiaoaiAnnounce));
   groupSelect.addEventListener('change', () => {
     if (groupSelect.value) selectGroup(groupSelect.value);
+  });
+  envSelect?.addEventListener('change', () => {
+    if (envSelect.value) selectEnv(envSelect.value);
   });
   input.addEventListener('keyup', (event) => {
     if (event.key === '@' || input.value.includes('@')) refreshAgentDatalist();

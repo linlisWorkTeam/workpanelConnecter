@@ -324,6 +324,13 @@ button { -webkit-app-region: no-drag; }
   font-weight: 700;
 }
 
+.space-switchers {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
 .group-select {
   display: block;
   max-width: 220px;

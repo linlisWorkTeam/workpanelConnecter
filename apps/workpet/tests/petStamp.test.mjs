@@ -5,11 +5,14 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import {
+  envDisplayName,
+  envOptionLabel,
   formatXiaoaiAnnounce,
   isStaleGroupFetch,
   isXiaoaiDoneStatus,
   matchAgentPrefix,
   matchesOptimisticBubble,
+  petSelectableEnvs,
   renderMessageAuthor,
   shouldAnnounceRun,
   shouldStartConsolePolling,
@@ -138,6 +141,22 @@ test('shouldStartConsolePolling requires open panel and no pause', () => {
   assert.equal(shouldStartConsolePolling({ panelOpen: true, consolePaused: false }), true);
   assert.equal(shouldStartConsolePolling({ panelOpen: false, consolePaused: false }), false);
   assert.equal(shouldStartConsolePolling({ panelOpen: true, consolePaused: true }), false);
+});
+
+test('envOptionLabel includes host port', () => {
+  assert.equal(envOptionLabel({ name: 'canary', baseUrl: 'http://127.0.0.1:8082' }), '本地 · 127.0.0.1:8082');
+  assert.equal(envOptionLabel({ name: 'remote', baseUrl: 'http://example.com' }), '远端 · example.com');
+});
+
+test('petSelectableEnvs hides prod', () => {
+  assert.deepEqual(
+    petSelectableEnvs([
+      { name: 'canary' },
+      { name: 'remote' },
+      { name: 'prod' },
+    ]).map((e) => e.name),
+    ['canary', 'remote']
+  );
 });
 
 test('isStaleGroupFetch detects group switch and collapsed panel', () => {

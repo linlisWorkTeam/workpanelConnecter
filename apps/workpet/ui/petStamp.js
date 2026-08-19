@@ -129,3 +129,31 @@ export function isStaleGroupFetch(requestedId, currentId, panelOpen) {
   if (!requestedId || !currentId) return true;
   return requestedId !== currentId;
 }
+
+const ENV_LABELS = { canary: '本地', remote: '远端', prod: '生产' };
+
+/** CONNECTED SPACE 服务器下拉显示名：canary=本地，remote=远端。 */
+export function envDisplayName(name) {
+  const key = String(name || '').trim();
+  return ENV_LABELS[key] || key || '服务器';
+}
+
+export function envHostLabel(baseUrl) {
+  try {
+    const u = new URL(String(baseUrl || ''));
+    return u.port ? `${u.hostname}:${u.port}` : u.hostname;
+  } catch {
+    return '';
+  }
+}
+
+export function envOptionLabel(row) {
+  const name = envDisplayName(row?.name);
+  const host = envHostLabel(row?.baseUrl);
+  return host ? `${name} · ${host}` : name;
+}
+
+/** Pet 控制台不展示 prod（allowProdFromPet 默认关）。 */
+export function petSelectableEnvs(envs) {
+  return (envs || []).filter((row) => row && row.name && row.name !== 'prod');
+}
