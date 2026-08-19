@@ -25,7 +25,7 @@
 | E3 | ⏳ | Team↔Team / 协调门面（需 WP） |
 | E4 | ⏳ | 可选 HA；dsh 作为 **一种** Runner 接手 |
 
-**默认下一刀：E2 已合入 origin。本机继续 WorkPet 小爱完成播报；P2.5 仍为 WP ask。**
+**默认下一刀：E2 已合入 origin。WorkPet 小爱播报（homepage pet-announce）✅；P2.5 仍为 WP ask。**
 
 ## 2. 建议下一程（按优先级）
 
@@ -63,6 +63,7 @@
 | P3.2 | `POST /v1/register` 动态注册 + 审批 |
 | P3.3 | 独立非 AI「协调 Agent」替换群 admin 门面 |
 | P3.4 | WorkPet 皮肤/走动（F229 级）；CLI `/obs` `/restart-server` |
+| P3.5 | **WorkPet 小爱播报**（homepage `POST /api/xiaomi/pet-announce`；桌宠开关 + pet token） | **✅** |
 
 ## 3. 推荐执行顺序
 

@@ -17,12 +17,21 @@ WorkPet(桌面) ──HTTP──► Connecter(:80 nginx → :9080) ──A2A─�
 ## 桌面配置（用户机器）
 
 1. 复制 `config.example.json` → `~/.workpet/config.json`
-2. 填三项：
+2. 必填（Connecter 聊天）：
    - `connecterBaseUrl`：`http://<服务器IP>:80`（经 nginx 反代；公网前建议先上 443）
    - `token`：`config/relay.json` 里 `pets[].token`（找管理员要）
    - `group` / `agent`：与 relay 配置中该 pet 绑定的群/Agent 一致
    - `live2d.modelUrl`：应用本地 `model3.json` 路径；`scale` 是自动适配后的倍率，位置可按模型微调
-3. 缺配置时应用会提示，不会静默连任何后端
+3. 可选（小爱完成播报，经 linlisHomePage，**不经 Connecter**）：
+
+   | 字段 | 含义 |
+   |------|------|
+   | `xiaoaiAnnounce` | `true` 时，本宠发出的 Agent run 进入终态（`completed` / `failed` / `error` / `delivered`）后 POST homepage 播报；默认 `false` |
+   | `homepageBaseUrl` | homepage API 根，如 `http://127.0.0.1:8000` |
+   | `homepagePetToken` | 与 homepage 服务端 `XIAOMI_PET_TOKEN` 相同（占位符见 `config.example.json`，勿提交真实 token） |
+
+   桌宠顶栏与展开面板均有「小爱播报」开关；切换会写 `localStorage` 并经 Tauri 回写 `xiaoaiAnnounce`。homepage 侧 `announceEnabled` 仍是总闸（关则 200 skipped、不 TTS）。缺 URL 或 token 时打开开关会气泡提示，不发请求。
+4. 缺 Connecter 配置时应用会提示，不会静默连任何后端
 
 ## 构建与运行（需在目标桌面系统上执行）
 
