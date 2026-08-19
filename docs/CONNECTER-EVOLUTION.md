@@ -3,7 +3,7 @@
 > 日期：2026-08-10 · 角色：cs（Connecter 侧）  
 > 背景：云主机内存仅够约 **2 个 Agent session**；希望参考 Raft「节点可分散部署」、本机跑 Agent；WorkPet/Connecter 现状是 **Team↔Team 中继**，尚未做 **Team 内跨机 Agent 直达**。  
 > 关联：`docs/workconnector-system-design.md` · `docs/NEXT-DEV-PATH.md` · `docs/bridge-deepseek-harness.md`
-> 定位：Connecter = **各 WorkPanel ↔ 可插拔 Runner 的桥上中继**。DeepSeek Harness（dsh）只是 **一种** 未来 Runner，**不是** 槽位本身；E4 达线后再由 dsh 用同一 `/v1/agents/*` 自举。见 `docs/superpowers/specs/2026-08-19-e2-pluggable-runner-design.md`。
+> 定位：**Connecter** = 每站点一台，接下辖 WorkPet、对本站 WorkPanel 投递。**Connecter Host** = 全网一台，只会合各 Connecter（不接桌宠、不直连 WP）。单站可合署为同一进程。DeepSeek Harness（dsh）只是 **一种** 未来 Runner。命名规格：`docs/superpowers/specs/2026-08-19-connecter-host-naming-design.md`。E2 插件：`docs/superpowers/specs/2026-08-19-e2-pluggable-runner-design.md`。
 
 ## 1. 问题重新表述
 
@@ -18,19 +18,18 @@
 ## 2. 目标架构（演进后）
 
 ```text
-                    ┌─────────────────────────────┐
-                    │  Connecter（轻量中继，可仍单机） │
-                    │  注册表 / 路由 / 信封 / 可靠投递   │
-                    └──────────────┬──────────────┘
-           ┌───────────────┬───────┴────────┬────────────────┐
-           ▼               ▼                ▼                ▼
-    WorkPanel 云端     Agent Runner A    Agent Runner B    WorkPet
-    （群/会话/UI）      （本机或另一台）    （另一机房）       （桌宠入口）
-    少驻留重 Agent      cursor-agent …    其他模型/工具
+WorkPet A ──绑定──► Connecter A ──► 本站 WorkPanel A
+                      │
+                      ▼
+                Connecter Host（唯一）
+                      │
+                      ▼
+WorkPet B ──绑定──► Connecter B ──► 本站 WorkPanel B
 ```
 
-- **Team↔Team**：继续走现有 WP backend + 群门面（已有）。  
-- **Team 内 Agent↔Agent（跨机）**：Connecter 按「agent_instance → endpoint」转发，执行发生在 **各自机器**，云主机只保留薄 WP / 少量协调。
+- **本站**不经 Host。**跨站**才 `Connecter A → Host → Connecter B`（E3，未实现）。
+- Runner 挂在 **Connecter** 上出站 pull。Host 不执行 Agent。
+- 单站：Host 与该站 Connecter 可合署。
 
 ## 3. 对「Raft」的采用建议（务实拆分）
 
@@ -82,14 +81,15 @@
 
 ### 阶段 E3 — Team↔Team 强化（现有能力加深）
 
+- **Connecter A → Connecter Host → Connecter B**（联邦；Host 不接桌宠）
 - WP→Connecter 回调、跨 env 审计（原 P2）  
 - 协调门面从「群 admin Agent」演进为 **非 AI 协调算法**（原架构债）
 
-### 阶段 E4 — 中继 HA + dsh 自举（远期）
+### 阶段 E4 — Host HA + dsh 自举（远期）
 
-- Connecter 双机 + 成员表共识（可选 Raft/etcd）；消息仍 SQLite/外置队列  
-- **dsh 作为一种 Runner** 接入同一 pull API，接手自举流程  
-- 仅当中继可用性成为瓶颈、或要上真实 Harness 时立项
+- **Connecter Host** 双机 + 成员表共识（可选 Raft/etcd）；消息仍 SQLite/外置队列  
+- **dsh 作为一种 Runner** 接入同一 pull API，挂在各站 **Connecter** 上  
+- 仅当 Host 可用性成为瓶颈、或要上真实 Harness 时立项
 
 ## 5. 与现状 / NEXT 的衔接
 

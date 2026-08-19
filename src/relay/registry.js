@@ -181,3 +181,43 @@ export function checkRateLimit(petId, limitPerMin = 60, bucket = 'chat') {
   buckets.set(key, arr);
   return { ok: true };
 }
+
+function loginPetId(username) {
+  const slug = String(username || '')
+    .replace(/[^a-zA-Z0-9_-]/g, '')
+    .slice(0, 24);
+  if (slug) return `pet-login-${slug}`;
+  return `pet-login-${hashToken(username).slice(0, 12)}`;
+}
+
+/** Reuse a provisioned pet token, or mint a session for a WP user who logged in. */
+export async function issueLoginPet(config, { username }) {
+  const match = (config.pets || []).find(
+    (p) => p.wpAuth?.username === username || p.wpUsername === username
+  );
+  if (match?.id && match?.token) {
+    return { petId: match.id, token: match.token, reused: true };
+  }
+
+  const petId = loginPetId(username);
+  const token = `login_${randomUUID()}`;
+  await writeTx((database) => {
+    database
+      .prepare(
+        `INSERT INTO pets (id, owner_user_id, name, status, last_seen_at)
+         VALUES (?, NULL, ?, 'online', datetime('now'))
+         ON CONFLICT(id) DO UPDATE SET
+           name = excluded.name,
+           status = 'online',
+           last_seen_at = datetime('now')`
+      )
+      .run(petId, username);
+    database
+      .prepare(
+        `INSERT INTO sessions (id, pet_id, agent_instance_id, token_hash, status)
+         VALUES (?, ?, NULL, ?, 'active')`
+      )
+      .run(`sess_${randomUUID()}`, petId, hashToken(token));
+  });
+  return { petId, token, reused: false };
+}

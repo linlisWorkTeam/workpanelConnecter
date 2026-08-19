@@ -7,14 +7,14 @@ status: active
 
 # Epitaph: WorkPet CONNECTED SPACE / 注册表后续
 
-> 本会话将改由 **agentteam** 调度后续 Agent。先读本文再动代码。
+> 本会话将改由 **agentteam** 调度后续 Agent。先读 **日期更新** 的 [2026-08-20-workpet-appearance-login](./2026-08-20-workpet-appearance-login.md)，再读本文。
 
 ## Built this session
 
 - WorkPet 迷你群控制台：`GET /v1/groups*` 代理 WP；展开面板切群、成员在线、群消息、`@Agent`。
 - 合入 origin `d4c5910`：无 `@` **只**打群 `adminMemberId`（`NO_ADMIN`）；`pets[].wpAuth` 以 WP 用户发言；`GET /v1/members`；presence heartbeat（WP canary 未发则 404 跳过）。
 - WorkPet 小爱播报：homepage `POST /api/xiaomi/pet-announce`；桌宠 ♪ 开关；run 终态才播。
-- CONNECTED SPACE **服务器下拉**：`GET /v1/envs`，`canary` 显示「本地」、`remote` 显示「远端」，选项带 host:port。
+- CONNECTED SPACE **服务器下拉**：`GET /v1/envs`，优先 `label`；`canary` 显示「灰度」（不再叫「本地」）。选项带 host:port。
 - 修复合并丢失的 `let sending = false`（发消息 `ReferenceError`）。
 
 **未进 git（有意）：** `config/relay.json`（gitignore）。本机已把 `backends.canary.baseUrl` 改成 `http://127.0.0.1:8082`（真 WP）。`:8081` 仍是 mock（`local-canary` / `灰度测试`）。
@@ -24,15 +24,17 @@ status: active
 - Relay：`src/relay/handlers.js` · `src/relay/mentions.js` · `src/relay/groupConsole.js` · `src/relay/server.js` · `src/workpanelClient.js`
 - WorkPet：`apps/workpet/ui/main.js` · `index.html` · `connecterApi.js` · `petStamp.js`
 - 契约：`docs/api-relay.md` · `docs/CONNECTER-EVOLUTION.md` · `docs/NEXT-DEV-PATH.md`
-- 规格：`docs/superpowers/specs/2026-08-19-workpet-group-console-design.md`（G7 管理员；G12 wpAuth）
+- 规格：`docs/superpowers/specs/2026-08-19-workpet-group-console-design.md`（G7 管理员；G12 wpAuth）· `docs/superpowers/specs/2026-08-19-connecter-host-naming-design.md`（WorkPet / Connecter / Host）
 
 ## Locked product decisions
 
-- Pet **只连 Connecter**（G2），不直连 WP，不做桌宠侧 mDNS/扫端口。
+- Pet **只连自己绑定的 Connecter**（G2），不直连 WP、不直连 **Connecter Host**，不做桌宠侧 mDNS/扫端口。
+- **Connecter** 每站点一台；**Connecter Host** 全网一台（只会合各 Connecter）。单站可合署。规格：`docs/superpowers/specs/2026-08-19-connecter-host-naming-design.md`。
 - 无 `@` → 群管理员 Agent；有 `@` 须为 agent，否则 `UNKNOWN_MENTION`。
-- 发言身份：`pets[].wpAuth`；省略则门面 `backends.*.auth`。
-- 切服务器 = 切 Connecter `backends` env，不是桌宠自己发现 WP。
-- Roadmap「注册表」= **E1 Runner**（`/v1/agents/*`），**不是** WP 端口自发现。
+- 发言身份：登录 overlay 优先，其次 `pets[].wpAuth`；省略则门面 `backends.*.auth`。
+- WorkPet **必须登录**才看 CONNECTED SPACE；群列表/发言仅限自己所在的群（非成员 `NOT_IN_GROUP`）。
+- 本环境 Connecter 出站加入 Host：`POST /v1/host/peers/register` + heartbeat。当前 `windows-dev` 已 linked。跨站消息联邦仍未做。
+- Roadmap「注册表」= **E1 Runner**（挂在 Connecter 的 `/v1/agents/*`），**不是** WP 端口自发现。
 
 ## Known pitfalls
 
@@ -62,7 +64,7 @@ npm run test:runner
 cd apps/workpet && npm run test:ui
 ```
 
-冒烟：展开 CONNECTED SPACE → 下拉应见 `本地 · 127.0.0.1:8082` 与远端；切本地群为 8082 上的群；切远端为云上群。本机 WP：`http://127.0.0.1:8082/`。
+冒烟：桌宠优先绑 **本环境 Connecter**（`http://127.0.0.1:9080`）。公网 ECS 不是本环境。下拉见本站 `GET /v1/envs`（canary=本机 WP `:8082`）。
 
 ## Do not regress
 
@@ -73,11 +75,10 @@ cd apps/workpet && npm run test:ui
 
 ## Open follow-ups（agentteam 下一刀）
 
-优先（用户已拍「调研注册表」，未开工）：
+优先（用户已拍「调研注册表」）：
 
-1. **WP 槽位健康（小）**：Connecter 探 `backends.*.baseUrl/api/health`，`GET /v1/envs` 带 `alive` + baseUrl；下拉里灰掉挂掉的槽。仍不扫描局域网。
-2. **WP 自注册（中，需 WP）**：本机 WP 启动出站登记到 Connecter（与 E1 `/v1/agents/register` 同构：register + heartbeat + TTL）。换端口不必改 `relay.json`。接近 E3 Team↔Team，不是现成 API。
-3. **不要**在 WorkPet 做 mDNS / 扫 8081–8082。
+1. **WP 槽位健康 + 自注册（Connecter ✅）**：`GET /v1/envs` 带 `alive`/`source`；`POST /v1/backends/register` + `heartbeat`（ops）。本机：`npm run wp-slot -- --baseUrl http://127.0.0.1:8082 --name canary`（可 `--loop`）。WP 仓尚未内嵌出站登记。
+2. **不要**在 WorkPet 做 mDNS / 扫 8081–8082。
 
 其余未做：
 

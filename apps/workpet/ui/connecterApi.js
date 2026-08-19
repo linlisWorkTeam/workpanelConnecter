@@ -128,5 +128,31 @@
     };
   }
 
-  return { createConnecterClient };
+  async function login(baseUrl, body) {
+    const base = String(baseUrl || '').replace(/\/+$/, '');
+    if (!base) throw new Error('connecterBaseUrl required');
+    let res;
+    try {
+      res = await fetch(base + '/v1/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body || {}),
+      });
+    } catch (e) {
+      const err = new Error('network: ' + e.message);
+      err.kind = 'network';
+      throw err;
+    }
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      const err = new Error(json.error || 'HTTP ' + res.status);
+      err.status = res.status;
+      err.body = json;
+      err.kind = 'http';
+      throw err;
+    }
+    return json;
+  }
+
+  return { createConnecterClient, login };
 });

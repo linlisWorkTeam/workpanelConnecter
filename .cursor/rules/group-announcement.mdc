@@ -5,6 +5,8 @@ alwaysApply: true
 
 # 群公告 / 项目级规则
 
-该项目用来解决多Workpanel间交互的问题。
+该项目用来解决多 WorkPanel 间交互的问题。
+
+**命名（2026-08-19 拍板）**：UI 只叫 **WorkPet**；每站点一台后端 **Connecter**（桌宠绑定它、它连本站 WP）；全网一台 **Connecter Host**（只会合各 Connecter，不接桌宠、不直连 WP）。单站可合署。规格：`docs/superpowers/specs/2026-08-19-connecter-host-naming-design.md`。
 
 后续 Agent 开工前读 `docs/epitaph/`（墓志铭 / 会话交接）。

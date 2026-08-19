@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import assert from 'node:assert/strict';
-import { pickSender, serverForPet, findPetConfig } from '../src/workpanelClient.js';
+import { pickSender, selfInGroup, serverForPet, findPetConfig } from '../src/workpanelClient.js';
+import { setSessionWpAuth, clearSessionWpAuth } from '../src/relay/sessionWpAuth.js';
 
 const group = { ownerMemberId: 'owner-1', adminMemberId: 'ag-1' };
 const members = [
@@ -42,5 +43,27 @@ const config = {
 assert.equal(findPetConfig(config, 'pet-1').id, 'pet-1');
 assert.deepEqual(serverForPet(backend, config, 'pet-1').auth, { username: 'lin', password: 'secret' });
 assert.deepEqual(serverForPet(backend, config, 'unknown').auth, backend.auth);
+setSessionWpAuth('pet-1', { username: 'live', password: 'now' });
+assert.deepEqual(serverForPet(backend, config, 'pet-1').auth, { username: 'live', password: 'now' });
+clearSessionWpAuth();
+assert.deepEqual(serverForPet(backend, config, 'pet-1').auth, { username: 'lin', password: 'secret' });
+
+assert.equal(
+  selfInGroup(group, members, { userId: 'user-lin' }),
+  true,
+  'linked member can see the group'
+);
+assert.equal(
+  selfInGroup(group, members, { userId: 'nobody' }),
+  false,
+  'bound group hides people who are not members'
+);
+assert.equal(
+  selfInGroup(group, [{ id: 'owner-1', kind: 'user', displayName: '我', isActive: true }], {
+    userId: 'seed-root',
+  }),
+  true,
+  'unbound members: trust WP list until authUserId is filled'
+);
 
 console.log('IDENTITY_UNIT_OK');

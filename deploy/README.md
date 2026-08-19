@@ -2,7 +2,17 @@
 
 > 部署形态：方案 B — nginx `:80` `/v1/*` → systemd Connecter `:9080`  
 > 决策：root 2026-08-06 · 状态：已上线  
-> API 契约：`docs/api-relay.md`
+> API 契约：`docs/api-relay.md`  
+> **角色**：每站点一台 **Connecter**（`connecter-relay` 进程）；**Connecter Host** 全网一台，单站可与 Connecter 合署。桌宠 `connecterBaseUrl` 绑的是 Connecter，不是 Host。规格：`docs/superpowers/specs/2026-08-19-connecter-host-naming-design.md`。
+
+| 场景 | 桌宠绑定的 Connecter（`connecterBaseUrl`） | 该站 runner `CONNECTER_RELAY_URL` |
+|------|------------------------------------------|----------------------------------|
+| 现在（本机开发） | `http://127.0.0.1:9080`（本环境 Connecter） | 同机 `http://127.0.0.1:9080` |
+| 现在（ECS 合署站） | 该站桌宠才填 `http://101.132.60.79` | 与 Connecter 同机：`http://127.0.0.1:9080` |
+| HTTPS 域名（443 通时） | `https://www.coffeecookie.online` | 同上 |
+| 以后（局域网本站） | `http://<本站Connecter>:9080` 或内网 nginx `:80` | 同机 `127.0.0.1:9080` |
+
+跨站走 Host（E3，未实现）。本站聊天不经 Host。桌宠不做扫端口 / mDNS。
 
 ## 1. 端口
 
@@ -77,7 +87,33 @@ systemctl disable --now connecter-relay
 # 去掉 nginx /v1/ location 后 reload
 ```
 
-## 6. 验证清单
+## 6. wp-runner（E2，ECS）
+
+进程出站 pull：`heartbeat` + `/v1/agents/tasks` → 实打 canary WP `:8081` → `/v1/agents/tasks/result`。  
+**不要**把 runner 配到 prod `:8080`（`scripts/wp-runner.js` 会拒）。
+
+```bash
+# 1. 在 relay.json 预配 runners[]（agentId/token/bindings；token 勿进 git）
+#    绑定须与群管理员 displayName 一致，灰度群当前为 Cursor Agent
+# 2. 安装 unit
+cp deploy/wp-runner.service /etc/systemd/system/
+systemctl daemon-reload
+systemctl restart connecter-relay   # 加载 runners[]
+systemctl enable --now wp-runner
+
+systemctl status wp-runner --no-pager
+journalctl -u wp-runner -n 50 --no-pager -f
+```
+
+验收（本机 loopback，禁止 echo mock）：
+
+- `GET /v1/agents`（ops）里该 binding `runner_status=active` 且 `runner_last_seen` 新鲜
+- pet `POST /v1/chat` 无 `@` → 响应带 `runner.agentId`（否则 503 `runner_offline`）
+- canary 灰度群出现真实 WP 消息；`GET /v1/messages` 有非占位全文或 WP 回执
+
+桌宠默认绑 **本环境 Connecter**（`http://127.0.0.1:9080`），不要把开发机桌宠直接指到 ECS。ECS 灰度 runner 给绑在那一站 Connecter 上的宠用。
+
+## 7. 验证清单
 
 - [ ] `:9080/v1/health` 与 `:80/v1/health` 均为 `ok`  
 - [ ] 无 token 访问 `/v1/envs` → 401  
@@ -87,7 +123,7 @@ systemctl disable --now connecter-relay
 
 门禁（发版前）：`npm test` · `npm run test:relay` · 可选 `npm run test:e2e-resume`。
 
-## 7. 风险
+## 8. 风险
 
 | 风险 | 缓解 |
 |------|------|

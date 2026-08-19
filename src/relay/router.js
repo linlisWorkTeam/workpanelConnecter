@@ -2,10 +2,12 @@
  * Resolve env → WorkPanel backend. Connecter itself has no prod/canary slots.
  */
 
+import { backendsFor } from './wpSlots.js';
+
 export function resolveBackend(config, env, { client = 'pet' } = {}) {
   const defaults = config.defaults || {};
   const name = (env || defaults.env || 'canary').trim();
-  const backends = config.backends || {};
+  const backends = backendsFor(config);
 
   if (!backends[name]) {
     const err = new Error(`unknown env: ${name}`);
@@ -27,9 +29,12 @@ export function resolveBackend(config, env, { client = 'pet' } = {}) {
 }
 
 export function listEnvs(config) {
-  return Object.keys(config.backends || {}).map((name) => ({
+  const backends = backendsFor(config);
+  return Object.keys(backends).map((name) => ({
     name,
-    baseUrl: config.backends[name].baseUrl,
-    kind: config.backends[name].kind || 'workpanel',
+    label: backends[name].label || null,
+    baseUrl: backends[name].baseUrl,
+    kind: backends[name].kind || 'workpanel',
+    source: backends[name].source || 'config',
   }));
 }

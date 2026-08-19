@@ -192,9 +192,14 @@ button { -webkit-app-region: no-drag; }
   pointer-events: none;
 }
 
+.pet-shell.sprite-mode .fallback-pet,
 .pet-shell.fallback-active .fallback-pet {
   opacity: 1;
   transform: translateY(0);
+}
+
+.pet-shell.sprite-mode #live2dCanvas {
+  opacity: 0;
 }
 
 .fallback-pet img {
@@ -220,6 +225,62 @@ button { -webkit-app-region: no-drag; }
   border: 0;
   background: transparent;
   cursor: pointer;
+}
+
+.pet-menu {
+  position: fixed;
+  z-index: 40;
+  min-width: 168px;
+  padding: 6px;
+  border: 1px solid rgba(124, 231, 255, 0.22);
+  border-radius: 4px 14px 14px 14px;
+  background: linear-gradient(165deg, rgba(16, 22, 40, 0.96), rgba(8, 12, 24, 0.94));
+  box-shadow: 0 16px 40px rgba(1, 5, 15, 0.55), inset 0 1px rgba(124, 231, 255, 0.12);
+  backdrop-filter: blur(16px);
+  -webkit-app-region: no-drag;
+}
+
+.pet-menu button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  margin: 0;
+  padding: 7px 10px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #e8eefc;
+  font-size: 12px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pet-menu button[aria-checked="true"]::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 1px;
+  background: var(--cyan);
+  box-shadow: 0 0 8px rgba(124, 231, 255, 0.7);
+}
+
+.pet-menu button:not([aria-checked="true"])::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+}
+
+.pet-menu button:hover,
+.pet-menu button:focus-visible {
+  background: rgba(124, 231, 255, 0.1);
+  outline: none;
+}
+
+.pet-menu .pet-menu-sep {
+  height: 1px;
+  margin: 5px 8px;
+  background: linear-gradient(90deg, transparent, rgba(124, 231, 255, 0.28), transparent);
 }
 
 .loading-hint {
@@ -355,6 +416,66 @@ button { -webkit-app-region: no-drag; }
   background: #f8fafc;
 }
 
+.chat-panel.is-locked .space-switchers,
+.chat-panel.is-locked .member-strip,
+.chat-panel.is-locked .msg-list,
+.chat-panel.is-locked .panel-foot {
+  display: none;
+}
+
+.login-gate {
+  display: none;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 17px 16px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.07);
+}
+
+.chat-panel.is-locked .login-gate {
+  display: flex;
+}
+
+.login-kicker {
+  margin: 0;
+  color: var(--cyan);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+}
+
+.login-copy {
+  margin: 0 0 4px;
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: #d7e0f5;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+}
+
+.login-field .input {
+  letter-spacing: 0;
+  font-size: 13px;
+}
+
+.login-gate .send-btn {
+  margin-top: 4px;
+  align-self: flex-end;
+}
+
+.login-err {
+  margin: 0;
+  color: var(--danger);
+  font-size: 12px;
+}
+
 .eyebrow {
   margin: 0;
   color: var(--cyan);
@@ -376,6 +497,10 @@ button { -webkit-app-region: no-drag; }
   color: var(--mint);
   border-color: rgba(112, 240, 187, 0.24);
   background: rgba(112, 240, 187, 0.08);
+}
+
+.connection-badge.online.linked {
+  border-color: rgba(112, 240, 187, 0.4);
 }
 
 .member-strip {

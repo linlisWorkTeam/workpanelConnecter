@@ -1,9 +1,12 @@
 # WorkPet Live2D 桌宠（apps/workpet）
 
-WorkPanel 桌宠入口：透明置顶的 Live2D 角色 + 展开聊天，经 **Connecter 中继**（`/v1/*`，默认 canary）与 WorkPanel 群组交互。静态 SVG 仅作为 Live2D 资源加载失败时的降级。
+WorkPanel 桌宠入口：透明置顶角色 + 展开聊天。形象有两种加载模式：**Live2D**（默认 Cubism）和 **状态动图**（idle/thinking/speaking/error 各一张 webp/png/gif/svg）。右键点角色切换；上传拷到 `~/.workpet/models/` 或 `~/.workpet/skins/`，不进安装目录。UI 名 **WorkPet**；只连自己绑定的 **Connecter**（`/v1/*`），不连 Connecter Host、不直连 WorkPanel。自带剪影 `skin.svg` 是动图默认皮肤，也是 Live2D 加载失败时的降级。
 
 ```
-WorkPet(桌面) ──HTTP──► Connecter(:80 nginx → :9080) ──A2A──► WorkPanel(canary :8081)
+WorkPet ──绑定──► Connecter(:80 nginx → :9080) ──► 本站 WorkPanel
+                     │
+                     ▼  （跨站才走，E3 未实现）
+                Connecter Host
 ```
 
 ## 目录
@@ -18,9 +21,10 @@ WorkPet(桌面) ──HTTP──► Connecter(:80 nginx → :9080) ──A2A─�
 
 1. 复制 `config.example.json` → `~/.workpet/config.json`
 2. 必填（Connecter 聊天）：
-   - `connecterBaseUrl`：`http://<服务器IP>:80`（经 nginx 反代；公网前建议先上 443）
-   - `token`：`config/relay.json` 里 `pets[].token`（找管理员要）
-   - `group` / `agent`：与 relay 配置中该 pet 绑定的群/Agent 一致
+   - `connecterBaseUrl`：这只宠绑定的 **本站 Connecter**（默认 `http://127.0.0.1:9080`）。公网 ECS 地址不算本环境，启动时会优先改回本机/局域网 Connecter。跨站走 Host（尚未实现），不要把桌宠直接绑到别的站。
+   - `preferLocalConnecter`：默认 `true`。设为 `false` 才允许绑到非本环境 URL。
+   - `token`：那一台 Connecter 的 `relay.json` → `pets[].token`（找管理员要）
+   - `group` / `agent`：与该中继上的群/Agent 及 runner binding 一致（当前 ECS 灰度群「灰度测试」/ Cursor Agent）
    - `live2d.modelUrl`：应用本地 `model3.json` 路径；`scale` 是自动适配后的倍率，位置可按模型微调
 3. 可选（小爱完成播报，经 linlisHomePage，**不经 Connecter**）：
 
@@ -60,6 +64,8 @@ src-tauri/target/debug/workpet.exe
 
 ## 交互
 
+- 右键角色 → 形象菜单：Live2D / 状态动图、更换当前模式的模型或皮肤、上传文件夹（持久化到 `~/.workpet/config.json` 的 `pet.mode`）
+- 状态动图：右键「复制定制 prompt」复制四文件 zip 说明，到任意生图站贴上并附参考图；「加载压缩包…」把 zip 解到 `~/.workpet/skins/`（`idle|thinking|speaking|error` + gif/webp/png/svg）。WorkPet 不调用生图 API。
 - 点击角色 → 播放互动动作；点击聊天按钮 → 展开聊天面板（窗口 300×420 → 440×680）
 - 顶部 `A−` / `A+` 可在 75%～150% 之间调整桌宠大小；也可用 `Ctrl+-` / `Ctrl++`，选择会保存到本机
 - 输入回车/发送 → `POST /v1/chat` → 显示 accepted + messageId/runId → 轮询 run 状态

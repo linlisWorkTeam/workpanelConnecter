@@ -1,0 +1,22 @@
+[Unit]
+Description=Connecter E2 wp-runner (pull tasks from relay, dispatch canary WorkPanel)
+After=network-online.target connecter-relay.service linlis-work-panel-canary.service
+Wants=network-online.target connecter-relay.service
+
+[Service]
+Type=simple
+WorkingDirectory=/AI/WorkPanelConnecter
+Environment=NODE_ENV=production
+Environment=CONNECTER_RELAY_URL=http://127.0.0.1:9080
+Environment=CONNECTER_RELAY_CONFIG=/AI/WorkPanelConnecter/config/relay.json
+Environment=CONNECTER_RUNNER_ID=wp-canary-runner
+Environment=CONNECTER_WP_POLL_MS=2000
+Environment=CONNECTER_WP_WAIT_MS=60000
+ExecStart=/usr/bin/node /AI/WorkPanelConnecter/scripts/wp-runner.js
+Restart=on-failure
+RestartSec=3
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

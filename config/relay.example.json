@@ -1,8 +1,9 @@
 {
   "listen": {
     "host": "0.0.0.0",
-    "port": 80
+    "port": 9080
   },
+  "publicBaseUrl": "http://CONNECTER_HOST:9080",
   "db": {
     "path": "data/connector.db"
   },
@@ -13,6 +14,7 @@
   "rateLimitPerMin": 60,
   "backends": {
     "canary": {
+      "label": "灰度",
       "baseUrl": "http://127.0.0.1:8081",
       "kind": "workpanel",
       "auth": {
@@ -33,7 +35,29 @@
     "env": "canary",
     "group": "灰度测试"
   },
-  "runners": [],
+  "host": {
+    "role": "connecter",
+    "baseUrl": "http://CONNECTER_HOST_URL",
+    "siteId": "site-dev",
+    "token": "dev-host-peer-token-change-me"
+  },
+  "runners": [
+    {
+      "agentId": "wp-canary-runner",
+      "token": "dev-runner-token-change-me",
+      "agentType": "workpanel",
+      "role": "general",
+      "runtime": "ecs",
+      "bindings": [
+        {
+          "env": "canary",
+          "groupId": "528b36ba-4769-4b4d-9fa8-51e2de132396",
+          "groupName": "灰度测试",
+          "agentName": "Cursor Agent"
+        }
+      ]
+    }
+  ],
   "pets": [
     {
       "id": "pet-dev-1",

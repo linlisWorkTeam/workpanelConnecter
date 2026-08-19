@@ -13,8 +13,8 @@
 | E2E E1–E8 | ✅ `docs/workpet-e2e-checklist.md` |
 | 默认 canary / 禁默认 prod / 无 WP promote | ✅ 门禁覆盖 |
 
-**产品形态**：Connecter = 中继 + CLI；GUI 仅 WorkPet；只做多 WP 调度协同，不做业务。  
-**Runner**：可插拔执行槽，**不是** DSH 专用；dsh 延后到 E4 自举。
+**产品形态**：每站一台 **Connecter**；全网一台 **Connecter Host**（单站可合署）；GUI 仅 **WorkPet**。只做多 WP 调度协同，不做业务。  
+**Runner**：挂在 Connecter 上的可插拔执行槽，**不是** DSH 专用。
 
 ## 1.1 当前主线（E2–E4）
 
@@ -63,7 +63,8 @@
 | P3.2 | `POST /v1/register` 动态注册 + 审批 |
 | P3.3 | 独立非 AI「协调 Agent」替换群 admin 门面 |
 | P3.4 | WorkPet 皮肤/走动（F229 级）；CLI `/obs` `/restart-server` |
-| P3.5 | **WorkPet 小爱播报**（homepage `POST /api/xiaomi/pet-announce`；桌宠开关 + pet token） | **✅** |
+| P3.5 | **WorkPet 小爱播报**（homepage pet-announce + 桌宠开关）✅ |
+| P3.6 | **WP 槽位健康 + 出站自注册**（`/v1/envs` alive、`/v1/backends/register`）✅ Connecter；WP 内嵌自举可选 |
 
 ## 3. 推荐执行顺序
 

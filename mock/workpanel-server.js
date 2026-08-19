@@ -39,12 +39,28 @@ const gateGroup = {
   adminMemberId: agent.id,
   ownerMemberId: user.id,
 };
-const groups = [group, gateGroup];
+const outsiderUser = {
+  id: 'u-other',
+  kind: 'user',
+  isActive: true,
+  displayName: 'Other',
+  authUserId: 'someone-else',
+};
+const outsiderGroup = {
+  id: 'outsider-group-1',
+  name: 'not-your-group',
+  adminMemberId: agent.id,
+  ownerMemberId: outsiderUser.id,
+};
+const groups = [group, gateGroup, outsiderGroup];
 
 /** Last successful POST /api/messages body (for unit assertions). */
 let lastMessagesPost = null;
 
 function groupState(target) {
+  if (target.id === outsiderGroup.id) {
+    return { group: target, members: [outsiderUser, agent] };
+  }
   return { group: target, members: [user, agent] };
 }
 
@@ -83,6 +99,9 @@ const server = http.createServer(async (req, res) => {
 
   if (req.method === 'POST' && path === '/api/auth/login') {
     if (!body.username || !body.password) {
+      return send(res, 401, { error: 'invalid credentials' });
+    }
+    if (body.password === 'wrong') {
       return send(res, 401, { error: 'invalid credentials' });
     }
     return send(res, 200, {

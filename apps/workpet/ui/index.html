@@ -31,14 +31,15 @@
       </div>
     </header>
 
-    <section id="petStage" class="pet-stage" aria-label="Live2D 桌宠">
+    <section id="petStage" class="pet-stage" aria-label="桌宠">
       <canvas id="live2dCanvas"></canvas>
       <div id="fallbackPet" class="fallback-pet" aria-hidden="true">
         <div class="fallback-glow"></div>
-        <img src="skin.svg" alt="" draggable="false" />
+        <img id="petSprite" src="skin.svg" alt="" draggable="false" />
       </div>
       <div id="loadingHint" class="loading-hint">正在唤醒桌宠…</div>
       <button id="petHit" class="pet-hit" type="button" aria-label="和桌宠互动"></button>
+      <nav id="petMenu" class="pet-menu is-hidden" hidden></nav>
       <div id="speechBubble" class="speech-bubble is-hidden" role="status"></div>
       <button id="openChatBtn" class="chat-fab" type="button">
         <span aria-hidden="true">⌁</span>
@@ -46,7 +47,7 @@
       </button>
     </section>
 
-    <section id="panel" class="chat-panel is-hidden" aria-label="聊天面板">
+    <section id="panel" class="chat-panel is-hidden is-locked" aria-label="聊天面板">
       <div class="panel-head">
         <div>
           <p class="eyebrow">CONNECTED SPACE</p>
@@ -59,9 +60,25 @@
           <button id="xiaoaiTogglePanel" class="icon-btn xiaoai-toggle" type="button" aria-pressed="false" aria-label="小爱播报" title="小爱播报">
             <span aria-hidden="true">♪</span>
           </button>
-          <span id="connectionBadge" class="connection-badge">未连接</span>
+          <span id="connectionBadge" class="connection-badge">未登录</span>
         </div>
       </div>
+      <form id="loginGate" class="login-gate">
+        <p class="login-kicker">进空间</p>
+        <p class="login-copy">登录后才能看群。只能看到自己所在的群。</p>
+        <label class="login-field">
+          <span>用户名</span>
+          <input id="loginUser" class="input" type="text" name="username" autocomplete="username" placeholder="WorkPanel 账号" />
+        </label>
+        <label class="login-field">
+          <span>密码</span>
+          <input id="loginPass" class="input" type="password" name="password" autocomplete="current-password" placeholder="密码" />
+        </label>
+        <button id="loginBtn" class="send-btn" type="submit">
+          <span>进入</span><span aria-hidden="true">↗</span>
+        </button>
+        <p id="loginErr" class="login-err" hidden></p>
+      </form>
       <div id="memberStrip" class="member-strip" aria-label="群成员"></div>
       <div id="msgList" class="msg-list" aria-live="polite"></div>
       <form id="composer" class="panel-foot">

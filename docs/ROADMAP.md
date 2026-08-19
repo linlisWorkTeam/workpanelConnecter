@@ -25,7 +25,7 @@
 | **E3** | Team↔Team：非 AI 协调门面、跨 WP、审计 | ⏳ 未开始 | 依赖 WP 仓；Connecter 只做中继侧 |
 | **E4** | 中继 HA（可选）；dsh 作为一种 Runner 接手自举 | ⏳ 远期 | 不做完整 Raft「为用而用」 |
 
-**当前下一刀：E2 中继已合入；生产部署 wp-runner 需另批。E3/E4 未开始。**
+**当前下一刀：E2 wp-runner 已在 ECS systemd 跑通（canary `:8081` 实调用）。E3/E4 未开始。**
 
 ## 2026-08-07 更新：WorkPet Live2D 改造
 

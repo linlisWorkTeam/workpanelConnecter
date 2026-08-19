@@ -10,6 +10,7 @@ import {
   checkRateLimit,
 } from './registry.js';
 import { findRunnerByToken, touchRunner } from './runners.js';
+import { findHostPeerByToken } from './hostPeers.js';
 
 export { extractBearer, checkBearer as checkBearerLegacy } from './auth.js';
 
@@ -64,6 +65,20 @@ export function authenticateRequest(
     }
     touchRunner(runner.id);
     return { ok: true, kind: 'runner', petId: null, runner, client: 'runner' };
+  }
+
+  const peer = findHostPeerByToken(token);
+  if (peer) {
+    if (peer.status !== 'active') {
+      return { ok: false, status: 401, error: 'peer disabled' };
+    }
+    return {
+      ok: true,
+      kind: 'peer',
+      petId: null,
+      peer,
+      client: 'peer',
+    };
   }
 
   return { ok: false, status: 401, error: 'invalid bearer token' };

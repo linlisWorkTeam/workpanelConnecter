@@ -141,3 +141,25 @@ CREATE TABLE IF NOT EXISTS runner_tasks (
   FOREIGN KEY (runner_id) REFERENCES runners(id)
 );
 CREATE INDEX IF NOT EXISTS idx_tasks_channel_status ON runner_tasks(channel_id, status);
+
+-- WP backend slots (CONNECTED SPACE env registry; overlay relay.json backends)
+CREATE TABLE IF NOT EXISTS wp_slots (
+  name TEXT PRIMARY KEY,
+  base_url TEXT NOT NULL,
+  kind TEXT NOT NULL DEFAULT 'workpanel',
+  auth_json TEXT,
+  last_seen_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+
+-- Connecter peers registered at Connecter Host (outbound join from each site Connecter)
+CREATE TABLE IF NOT EXISTS connecter_peers (
+  site_id TEXT PRIMARY KEY,
+  token_hash TEXT NOT NULL,
+  label TEXT,
+  public_base_url TEXT,
+  status TEXT NOT NULL DEFAULT 'active',
+  last_seen_at TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+

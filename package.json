@@ -28,7 +28,11 @@
     "test:e2-canary": "node scripts/e2-canary-runner-gate.js",
     "gate:e2-canary": "node scripts/e2-canary-runner-gate.js",
     "test:mentions": "node scripts/mention-unit.js",
-    "test:identity": "node scripts/identity-unit.js"
+    "test:identity": "node scripts/identity-unit.js",
+    "test:pet-login": "node scripts/pet-login-unit.js",
+    "test:wp-slots": "node scripts/wp-slots-unit.js",
+    "test:host-peers": "node scripts/host-peers-unit.js",
+    "wp-slot": "node scripts/wp-slot-register.js"
   },
   "engines": {
     "node": ">=18"

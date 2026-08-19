@@ -6,6 +6,7 @@
 
 import { parseAgentMention, formatPetStamp } from './relay/petStamp.js';
 import { pickAdminAgent } from './relay/mentions.js';
+import { getSessionWpAuth } from './relay/sessionWpAuth.js';
 
 const tokenCache = new Map(); // `${base}|${username}` -> { token, userId, username, expMs }
 
@@ -31,11 +32,14 @@ export function findPetConfig(config, petId) {
   return (config.pets || []).find((p) => p.id === petId) || null;
 }
 
-/** Overlay pets[].wpAuth onto a backend; WorkPet still only uses pet token. */
+/** Overlay login / pets[].wpAuth onto a backend; WorkPet still only uses pet token. */
 export function serverForPet(backend, config, petId) {
   const pet = findPetConfig(config, petId);
+  const live = getSessionWpAuth(petId);
   let auth = backend?.auth || {};
-  if (pet?.wpAuth?.username) {
+  if (live?.username) {
+    auth = { username: live.username, password: live.password || '' };
+  } else if (pet?.wpAuth?.username) {
     auth = pet.wpAuth;
   } else if (pet?.wpUsername) {
     auth = { username: pet.wpUsername, password: pet.wpPassword || '' };
@@ -77,12 +81,12 @@ async function fetchJson(url, { method = 'GET', token, body, timeoutMs = 8000 } 
   }
 }
 
-export async function wpSession(server, { timeoutMs = 5000 } = {}) {
+export async function wpSession(server, { timeoutMs = 5000, force = false } = {}) {
   const base = baseOf(server);
   const { username, password } = authOf(server);
   const key = loginCacheKey(base, username);
   const cached = tokenCache.get(key);
-  if (cached && cached.expMs > Date.now()) return cached;
+  if (!force && cached && cached.expMs > Date.now()) return cached;
 
   const res = await fetchJson(`${base}/api/auth/login`, {
     method: 'POST',
@@ -250,6 +254,21 @@ export function pickSender(group, members, { userId } = {}) {
   const owner = list.find((m) => m.id === ownerId);
   if (owner && isActiveHuman(owner) && !owner.authUserId) return owner;
   return null;
+}
+
+/**
+ * Visibility: linked authUserId wins. If nobody in the group is bound yet,
+ * trust the WP group list (canary 「我」 often has null authUserId).
+ */
+export function selfInGroup(_group, members, { userId } = {}) {
+  const list = members || [];
+  if (userId) {
+    const linked = list.find((m) => isActiveHuman(m) && m.authUserId === userId);
+    if (linked) return true;
+  }
+  const anyBound = list.some((m) => m.authUserId);
+  if (!anyBound) return true;
+  return false;
 }
 
 export function buildTeamCard(group, members, coordinator) {

@@ -2,10 +2,13 @@ import './connecterApi.js';
 import { Live2DPet } from './live2dPet.js';
 import {
   PET_SIZE_STEPS,
+  LOCAL_CONNECTER_BASE_URL,
   nextPetScale,
+  normalizePetAppearance,
   normalizePetScale,
   normalizePetState,
   petWindowSize,
+  resolveConnecterBaseUrl,
 } from './petConfig.js';
 import {
   isStaleGroupFetch,
@@ -17,8 +20,14 @@ import {
   formatXiaoaiAnnounce,
   envOptionLabel,
   petSelectableEnvs,
+  connectionBadgeText,
+  connectionSysLine,
+  groupVisibleMembers,
 } from './petStamp.js';
 import { postXiaoaiAnnounce, readXiaoaiEnabled } from './xiaoaiAnnounce.js';
+import { SpritePet } from './spritePet.js';
+import { buildAppearanceMenu } from './petAppearanceMenu.js';
+import { SPRITE_CUSTOMIZE_PROMPT } from './spriteCustomizePrompt.js';
 
 const $ = (id) => document.getElementById(id);
 const app = $('app');
@@ -48,6 +57,7 @@ let bubbleTimer = null;
 let panelOpen = false;
 let sending = false;
 let membersCache = [];
+let loggedIn = false;
 
 function hideMentions() {
   const menu = $('mentionMenu');
@@ -87,7 +97,7 @@ function applyMention(name) {
 }
 
 async function loadMembers() {
-  if (!client) return;
+  if (!loggedIn || !client) return;
   try {
     const row = await client.members({ group: currentGroupId || cfg.group });
     membersCache = row.members || [];
@@ -109,16 +119,20 @@ const pet = new Live2DPet({
   container: $('petStage'),
   onReady: () => {
     app.classList.add('live2d-ready');
-    app.classList.remove('fallback-active');
+    app.classList.remove('fallback-active', 'sprite-mode');
     loadingHint.classList.add('is-hidden');
   },
   onFallback: (error) => {
     app.classList.add('fallback-active');
-    app.classList.remove('live2d-ready');
+    app.classList.remove('live2d-ready', 'sprite-mode');
     loadingHint.textContent = `Live2D 降级：${error.message}`;
     loadingHint.title = error.message;
   },
 });
+const spritePet = new SpritePet({ img: $('petSprite') });
+let appearance = normalizePetAppearance();
+let live2dCatalog = [{ id: 'hiyori', label: 'Hiyori', modelUrl: 'models/hiyori/Hiyori.model3.json' }];
+let spriteCatalog = [{ id: 'default', label: '默认剪影', frames: {} }];
 
 function tauriWindow() {
   return window.__TAURI__?.window?.getCurrentWindow?.() || null;
@@ -178,7 +192,8 @@ function resizePet(direction) {
 function setPetState(state) {
   const next = normalizePetState(state);
   app.dataset.state = next;
-  pet.setState(next);
+  if (appearance.mode === 'sprite') spritePet.setState(next);
+  else pet.setState(next);
 }
 
 function showBubble(text, duration = 3600) {
@@ -270,11 +285,12 @@ function refreshAgentDatalist() {
 
 function renderMembers(members) {
   memberStrip.innerHTML = '';
-  agentMembers = (members || []).filter((m) => m && m.kind === 'agent' && m.displayName);
+  const visible = groupVisibleMembers(members);
+  agentMembers = visible.filter((m) => m && m.kind === 'agent' && m.displayName);
   if (members?.length) membersCache = members;
   refreshAgentDatalist();
 
-  for (const member of members || []) {
+  for (const member of visible) {
     if (!member?.displayName) continue;
     const chip = document.createElement('button');
     chip.type = 'button';
@@ -359,18 +375,49 @@ async function loadConfig() {
   return {};
 }
 
+async function probeConnecterHealth(base, timeoutMs = 1500) {
+  const url = String(base || '').replace(/\/+$/, '') + '/v1/health';
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    const res = await fetch(url, { signal: ctrl.signal });
+    clearTimeout(timer);
+    const body = await res.json().catch(() => ({}));
+    return res.ok && body.ok !== false && body.service === 'connecter-relay';
+  } catch {
+    return false;
+  }
+}
+
+async function bindThisEnvironmentConnecter(config) {
+  const next = { ...(config || {}) };
+  const localReachable = await probeConnecterHealth(LOCAL_CONNECTER_BASE_URL);
+  const url = resolveConnecterBaseUrl(next, { localReachable });
+  next.connecterBaseUrl = url;
+  if (url !== String(config?.connecterBaseUrl || '').replace(/\/+$/, '') && window.__TAURI__?.core) {
+    try {
+      await window.__TAURI__.core.invoke('set_config', {
+        patch: JSON.stringify({ connecterBaseUrl: url }),
+      });
+    } catch (_) { /* ignore */ }
+  }
+  return next;
+}
+
 function applyConfig(value) {
   cfg = value || {};
   $('petName').textContent = cfg.petName || 'WorkPet';
   const createClient = window.ConnecterClient?.createConnecterClient;
-  if (cfg.connecterBaseUrl && cfg.token && createClient) {
+  if (loggedIn && cfg.connecterBaseUrl && cfg.token && createClient) {
     try {
       client = createClient(cfg);
     } catch (error) {
       addMsg(`中继客户端初始化失败：${error.message}`, 'err');
     }
-  } else if (cfg.connecterBaseUrl && cfg.token) {
+  } else if (loggedIn && cfg.connecterBaseUrl && cfg.token) {
     addMsg('Connecter SDK 未加载，聊天暂不可用。', 'err');
+  } else {
+    client = null;
   }
   cfg.xiaoaiAnnounce = readXiaoaiEnabled(cfg, (key) => {
     try { return localStorage.getItem(key); } catch (_) { return null; }
@@ -412,6 +459,82 @@ async function setXiaoaiEnabled(on) {
   }
 }
 
+async function persistLogin(token, username) {
+  cfg.token = token;
+  cfg.wpUsername = username;
+  applyConfig(cfg);
+  if (window.__TAURI__?.core) {
+    try {
+      await window.__TAURI__.core.invoke('set_config', {
+        patch: JSON.stringify({ token, wpUsername: username }),
+      });
+    } catch (error) {
+      addMsg(`配置写入失败：${error.message || error}`, 'err');
+    }
+  }
+}
+
+function syncSpaceLock() {
+  panel.classList.toggle('is-locked', !loggedIn);
+}
+
+async function submitLogin() {
+  const errEl = $('loginErr');
+  const username = String($('loginUser')?.value || '').trim();
+  const password = String($('loginPass')?.value || '');
+  if (errEl) {
+    errEl.hidden = true;
+    errEl.textContent = '';
+  }
+  if (!cfg.connecterBaseUrl) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = '未配置 Connecter 地址';
+    }
+    return;
+  }
+  if (!username || !password) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = '请输入用户名和密码';
+    }
+    return;
+  }
+  const login = window.ConnecterClient?.login;
+  if (!login) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = 'Connecter SDK 未加载';
+    }
+    return;
+  }
+  try {
+    const body = await login(cfg.connecterBaseUrl, {
+      username,
+      password,
+      env: cfg.env || 'canary',
+    });
+    loggedIn = true;
+    if ($('loginPass')) $('loginPass').value = '';
+    await persistLogin(body.token, body.username || username);
+    syncSpaceLock();
+    await checkConnection();
+    if (panelOpen) {
+      await loadEnvs();
+      await loadGroups();
+      await loadMembers();
+      if (shouldStartConsolePolling({ panelOpen, consolePaused, loggedIn })) {
+        startConsolePolling();
+      }
+    }
+  } catch (error) {
+    if (errEl) {
+      errEl.hidden = false;
+      errEl.textContent = error.message || '登录失败';
+    }
+  }
+}
+
 async function persistEnv(name) {
   const env = String(name || '').trim();
   if (!env) return;
@@ -430,6 +553,7 @@ async function persistEnv(name) {
 
 async function loadEnvs() {
   if (!envSelect) return;
+  if (!loggedIn) return;
   if (!client) {
     setEnvSelectError('未连接 Connecter');
     return;
@@ -443,13 +567,16 @@ async function loadEnvs() {
       setEnvSelectError('暂无服务器');
       return;
     }
+    const pick = envs.some((e) => e.name === cfg.env)
+      ? cfg.env
+      : (envs.find((e) => e.alive !== false) || envs[0]).name;
     for (const row of envs) {
       const option = document.createElement('option');
       option.value = row.name;
       option.textContent = envOptionLabel(row);
+      option.disabled = row.alive === false && row.name !== pick;
       envSelect.appendChild(option);
     }
-    const pick = envs.some((e) => e.name === cfg.env) ? cfg.env : envs[0].name;
     envSelect.value = pick;
     if (pick !== cfg.env) await persistEnv(pick);
   } catch (error) {
@@ -474,15 +601,25 @@ async function selectEnv(name) {
 }
 
 async function checkConnection() {
+  if (!loggedIn) {
+    connectionBadge.textContent = connectionBadgeText(null, { loggedIn: false });
+    connectionBadge.classList.remove('online', 'linked');
+    connectionBadge.title = '登录后才能看群';
+    return;
+  }
   if (!client) {
     connectionBadge.textContent = '仅桌宠模式';
     return;
   }
   try {
     const health = await client.health();
-    connectionBadge.textContent = '在线';
+    connectionBadge.textContent = connectionBadgeText(health, { loggedIn: true });
     connectionBadge.classList.add('online');
-    addMsg(`已连接 ${health.service || 'connecter-relay'}`, 'sys');
+    connectionBadge.classList.toggle('linked', health.host?.role === 'connecter' && health.host?.linked === true);
+    connectionBadge.title = health.host?.linked
+      ? '已会合；成员条只列出当前群的人'
+      : '已连本站 Connecter';
+    addMsg(connectionSysLine(health, { loggedIn: true }), 'sys');
   } catch (error) {
     connectionBadge.textContent = '连接失败';
     setPetState('error');
@@ -545,6 +682,7 @@ async function selectGroup(id) {
 }
 
 async function loadGroups() {
+  if (!loggedIn) return;
   if (!client) {
     setGroupSelectError('未连接 Connecter');
     return;
@@ -596,9 +734,9 @@ function startConsolePolling() {
 async function send() {
   const text = input.value.trim();
   if (!text || sending) return;
-  if (!client) {
-    addMsg('请先配置 connecterBaseUrl 和 token。', 'err');
-    showBubble('我已经醒了，但还没有连接到 WorkPanel。');
+  if (!loggedIn || !client) {
+    addMsg('请先登录。', 'err');
+    showBubble('登录后才能看群、说话。');
     return;
   }
   if (!currentGroupId) {
@@ -728,7 +866,10 @@ async function expand() {
   await loadEnvs();
   await loadGroups();
   await loadMembers();
-  if (!shouldStartConsolePolling({ panelOpen, consolePaused })) return;
+  if (!shouldStartConsolePolling({ panelOpen, consolePaused, loggedIn })) {
+    $('loginUser')?.focus();
+    return;
+  }
   startConsolePolling();
   input.focus();
 }
@@ -745,22 +886,230 @@ async function collapse() {
   if (win) await win.setSize(logicalSize(petWindowSize(petScale)));
 }
 
+function tauriInvoke(cmd, args) {
+  const invoke = window.__TAURI__?.core?.invoke;
+  if (!invoke) return Promise.reject(new Error('desktop only'));
+  return invoke(cmd, args);
+}
+
+function assetUrl(absPath) {
+  const convert = window.__TAURI__?.core?.convertFileSrc;
+  return absPath && convert ? convert(absPath) : absPath;
+}
+
+function hidePetMenu() {
+  const menu = $('petMenu');
+  if (!menu) return;
+  menu.classList.add('is-hidden');
+  menu.hidden = true;
+  menu.innerHTML = '';
+}
+
+async function refreshAppearanceCatalogs() {
+  try {
+    const models = await tauriInvoke('list_live2d_models');
+    live2dCatalog = (models || []).map((row) => ({
+      id: row.id,
+      label: row.label,
+      modelUrl: row.abs_path ? assetUrl(row.abs_path) : row.model_url,
+    }));
+  } catch (_) {
+    live2dCatalog = [{ id: 'hiyori', label: 'Hiyori', modelUrl: 'models/hiyori/Hiyori.model3.json' }];
+  }
+  try {
+    const skins = await tauriInvoke('list_sprite_skins');
+    spriteCatalog = (skins || []).map((row) => ({
+      id: row.id,
+      label: row.label,
+      frames: Object.fromEntries(
+        Object.entries(row.frames || {}).map(([state, path]) => [state, assetUrl(path)])
+      ),
+    }));
+  } catch (_) {
+    spriteCatalog = [{ id: 'default', label: '默认剪影', frames: {} }];
+  }
+}
+
+async function persistAppearance(patch) {
+  cfg.pet = { ...(cfg.pet || {}), ...patch };
+  appearance = normalizePetAppearance(cfg);
+  if (window.__TAURI__?.core) {
+    try {
+      await window.__TAURI__.core.invoke('set_config', {
+        patch: JSON.stringify({ pet: cfg.pet, live2d: cfg.live2d }),
+      });
+    } catch (error) {
+      addMsg(`形象配置写入失败：${error.message || error}`, 'err');
+    }
+  }
+}
+
+async function applyAppearance() {
+  appearance = normalizePetAppearance(cfg);
+  loadingHint.classList.remove('is-hidden');
+  if (appearance.mode === 'sprite') {
+    pet.destroy();
+    app.classList.add('sprite-mode', 'fallback-active');
+    app.classList.remove('live2d-ready');
+    const skin = spriteCatalog.find((s) => s.id === appearance.spriteSkin) || spriteCatalog[0];
+    spritePet.init(skin);
+    loadingHint.classList.add('is-hidden');
+    setPetState(app.dataset.state || 'idle');
+    return;
+  }
+  app.classList.remove('sprite-mode');
+  pet.destroy();
+  const model = live2dCatalog.find((m) => m.id === appearance.live2dId) || live2dCatalog[0];
+  const live2d = {
+    ...appearance.live2d,
+    modelUrl: model?.modelUrl || appearance.live2d.modelUrl,
+  };
+  await pet.init(live2d);
+  setPetState(app.dataset.state || 'idle');
+}
+
+function renderPetMenu(x, y) {
+  const menu = $('petMenu');
+  if (!menu) return;
+  const rows = buildAppearanceMenu({
+    mode: appearance.mode,
+    live2dItems: live2dCatalog,
+    spriteItems: spriteCatalog,
+    currentModelUrl: live2dCatalog.find((m) => m.id === appearance.live2dId)?.modelUrl,
+    currentSkin: appearance.spriteSkin,
+  });
+  menu.innerHTML = '';
+  for (const row of rows) {
+    if (row.separator) {
+      const sep = document.createElement('div');
+      sep.className = 'pet-menu-sep';
+      menu.appendChild(sep);
+      continue;
+    }
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.textContent = row.label;
+    btn.dataset.id = row.id;
+    if (row.checked) btn.setAttribute('aria-checked', 'true');
+    btn.addEventListener('click', () => pickAppearanceMenu(row.id));
+    menu.appendChild(btn);
+  }
+  menu.hidden = false;
+  menu.classList.remove('is-hidden');
+  const pad = 8;
+  const maxX = Math.max(pad, window.innerWidth - menu.offsetWidth - pad);
+  const maxY = Math.max(pad, window.innerHeight - menu.offsetHeight - pad);
+  menu.style.left = `${Math.min(Math.max(pad, x), maxX)}px`;
+  menu.style.top = `${Math.min(Math.max(pad, y), maxY)}px`;
+}
+
+async function pickAppearanceMenu(id) {
+  hidePetMenu();
+  try {
+    if (id === 'mode-live2d') {
+      await persistAppearance({ mode: 'live2d' });
+      await applyAppearance();
+      return;
+    }
+    if (id === 'mode-sprite') {
+      await persistAppearance({ mode: 'sprite' });
+      await applyAppearance();
+      showBubble('状态动图：idle / speaking 等文件名', 2400);
+      return;
+    }
+    if (id === 'copy-prompt') {
+      try {
+        await navigator.clipboard.writeText(SPRITE_CUSTOMIZE_PROMPT);
+        showBubble('已复制。带上一张参考图，到任意生图平台按说明出 zip', 2800);
+      } catch (_) {
+        try {
+          const path = await tauriInvoke('write_sprite_customize_prompt', {
+            text: SPRITE_CUSTOMIZE_PROMPT,
+          });
+          showBubble(`复制失败，已写入 ${path}`, 3600);
+        } catch (error) {
+          showBubble(error?.message || String(error) || '复制 prompt 失败', 2400);
+        }
+      }
+      return;
+    }
+    if (id === 'load-zip') {
+      const imported = await tauriInvoke('import_sprite_zip');
+      if (!imported) return;
+      await refreshAppearanceCatalogs();
+      await persistAppearance({ mode: 'sprite', spriteSkin: imported.id });
+      await applyAppearance();
+      showBubble('已换上新形象', 1800);
+      return;
+    }
+    if (id === 'upload') {
+      const cmd = appearance.mode === 'sprite' ? 'import_sprite_skin' : 'import_live2d_model';
+      const imported = await tauriInvoke(cmd);
+      if (!imported) return;
+      await refreshAppearanceCatalogs();
+      if (appearance.mode === 'sprite') {
+        await persistAppearance({ mode: 'sprite', spriteSkin: imported.id });
+      } else {
+        await persistAppearance({ mode: 'live2d', live2dId: imported.id });
+      }
+      await applyAppearance();
+      showBubble('已换上新形象', 1800);
+      return;
+    }
+    if (appearance.mode === 'sprite' && spriteCatalog.some((s) => s.id === id)) {
+      await persistAppearance({ spriteSkin: id });
+      await applyAppearance();
+      return;
+    }
+    if (appearance.mode === 'live2d' && live2dCatalog.some((m) => m.id === id)) {
+      const hit = live2dCatalog.find((m) => m.id === id);
+      cfg.live2d = { ...(cfg.live2d || {}), modelUrl: hit.modelUrl.startsWith('models/') ? hit.modelUrl : cfg.live2d?.modelUrl };
+      await persistAppearance({ live2dId: id });
+      await applyAppearance();
+    }
+  } catch (error) {
+    showBubble(error?.message || String(error) || '形象切换失败', 2400);
+  }
+}
+
 async function interact() {
-  pet.interact();
-  showBubble(client ? '我在。要一起处理什么？' : 'Live2D 已就绪，连接 WorkPanel 后就能聊天。');
+  if (appearance.mode === 'sprite') {
+    spritePet.interact();
+    setTimeout(() => {
+      if (appearance.mode === 'sprite') setPetState('idle');
+    }, 1800);
+  } else {
+    pet.interact();
+  }
+  showBubble(client ? '我在。要一起处理什么？' : '桌宠已就绪，登录后就能聊天。');
 }
 
 async function init() {
-  const config = await loadConfig();
+  const config = await bindThisEnvironmentConnecter(await loadConfig());
   petScale = readSavedPetScale(config);
   await setPetScale(petScale, false);
-  await pet.init(config.live2d);
-  setPetState('idle');
   applyConfig(config);
+  appearance = normalizePetAppearance(cfg);
+  await refreshAppearanceCatalogs();
+  await applyAppearance();
+  setPetState('idle');
+  syncSpaceLock();
+  if (cfg.wpUsername && $('loginUser')) $('loginUser').value = cfg.wpUsername;
   await checkConnection();
-  await loadMembers();
+  if (loggedIn) await loadMembers();
 
-  $('petHit').addEventListener('click', interact);
+  $('petHit').addEventListener('click', () => {
+    if ($('petMenu') && !$('petMenu').hidden) return;
+    interact();
+  });
+  $('petStage')?.addEventListener('contextmenu', (event) => {
+    if (event.target.closest('.chat-fab, .icon-btn, .topbar, .speech-bubble')) return;
+    event.preventDefault();
+    renderPetMenu(event.clientX, event.clientY);
+  });
+  document.addEventListener('click', (event) => {
+    if (!event.target.closest('#petMenu')) hidePetMenu();
+  });
   $('openChatBtn').addEventListener('click', expand);
   $('chatToggle').addEventListener('click', expand);
   $('collapseBtn').addEventListener('click', collapse);
@@ -768,6 +1117,10 @@ async function init() {
   $('sizeUpBtn').addEventListener('click', () => resizePet(1));
   $('xiaoaiToggle').addEventListener('click', () => setXiaoaiEnabled(!cfg.xiaoaiAnnounce));
   $('xiaoaiTogglePanel').addEventListener('click', () => setXiaoaiEnabled(!cfg.xiaoaiAnnounce));
+  $('loginGate')?.addEventListener('submit', (event) => {
+    event.preventDefault();
+    submitLogin();
+  });
   groupSelect.addEventListener('change', () => {
     if (groupSelect.value) selectGroup(groupSelect.value);
   });

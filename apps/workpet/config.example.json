@@ -1,9 +1,10 @@
 {
-  "connecterBaseUrl": "http://YOUR_SERVER_IP:80",
+  "connecterBaseUrl": "http://127.0.0.1:9080",
+  "preferLocalConnecter": true,
   "token": "REPLACE_WITH_PET_TOKEN_FROM_RELAY_CONFIG",
   "env": "canary",
-  "group": "灰度测试",
-  "agent": "Cursor Agent",
+  "group": "local-canary",
+  "agent": "cs",
   "pollIntervalMs": 2000,
   "maxRunPolls": 30,
   "xiaoaiAnnounce": false,
@@ -11,6 +12,11 @@
   "homepagePetToken": "REPLACE_WITH_HOMEPAGE_XIAOMI_PET_TOKEN",
   "ui": {
     "petScale": 1.0
+  },
+  "pet": {
+    "mode": "live2d",
+    "spriteSkin": "default",
+    "live2dId": "hiyori"
   },
   "live2d": {
     "modelUrl": "models/hiyori/Hiyori.model3.json",

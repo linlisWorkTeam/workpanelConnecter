@@ -1,6 +1,7 @@
 # Connecter Relay API（对外契约）
 
 > 状态：**P0.2 冻结（2026-08-07）**；**WorkPet 群控制台冻结（2026-08-19）** — 与当前实现一致  
+> 命名（2026-08-19）：本 API 是 **Connecter**（站点）的 pet/ops/runner 面。**Connecter Host** 是另一角色（Connecter↔Connecter，协议未开）。单站合署时桌宠打的仍是 Connecter。规格：`docs/superpowers/specs/2026-08-19-connecter-host-naming-design.md`。  
 > Base URL：开发 `http://<host>:9080`；生产经 nginx `http://<host>/v1/...`（同路径）  
 > 规范交叉：`docs/workconnector-system-design.md` · N1 配置注册 · N2 轮询 · N3 SQLite · `docs/superpowers/specs/2026-08-19-workpet-group-console-design.md`
 
@@ -9,8 +10,8 @@
 | 项 | 约定 |
 |----|------|
 | 协议 | HTTP/1.1 · JSON · UTF-8 |
-| 鉴权 | `Authorization: Bearer <token>`（除 health） |
-| Token 类型 | **pet**：`relay.json` → `pets[].token`；**ops**：`auth.tokens[]` |
+| 鉴权 | `Authorization: Bearer <token>`（除 health、`POST /v1/auth/login`） |
+| Token 类型 | **pet**：`relay.json` → `pets[].token`，或登录签发；**ops**：`auth.tokens[]` |
 | 默认环境 | `canary`；pet 访问 `prod` 且 `allowProdFromPet=false` → **403** `PROD_FORBIDDEN` |
 | 幂等 | `POST /v1/chat` 的 `id`（建议 `msg_<uuid>`）为全局幂等键 |
 | 错误体 | `{ "error": "<string>", "code": "<optional>" }` |
@@ -20,7 +21,11 @@
 | 路径 | 匿名 | pet token | ops token |
 |------|------|-----------|-----------|
 | `GET /v1/health` | ✅ | ✅ | ✅ |
+| `POST /v1/auth/login` | ✅（WP 用户名密码） | — | — |
 | `GET /v1/envs` | ❌ | ✅ | ✅ |
+| `POST /v1/host/peers/register` | ✅（body token） | ❌ | ❌ |
+| `POST /v1/host/peers/heartbeat` | ❌ | ❌ | peer token |
+| `GET /v1/host/peers` | ❌ | ❌ 403 | ✅ |
 | `GET /v1/instances` | ❌ | ✅（仅本 pet） | ❌ 403 |
 | `GET /v1/groups` | ❌ | ✅ | ❌ 403 |
 | `GET /v1/groups/:id` | ❌ | ✅ | ❌ 403 |
@@ -44,7 +49,7 @@ ops 访问 `/v1/groups*` → **403** `{ "error": "pet token required" }`（与 `
 
 ### 1.3 群可见范围（G11）
 
-pet token 对 `/v1/groups*` 与扩展后的 `POST /v1/chat` 的可读可写范围 = **该 env 上门面账号在 WorkPanel 可见的全部群**，**不限于** `relay.json` → `pets[].groups` 绑定行。`agent_instances` 仍用于 ack 路由；值班 Agent 由群成员 `@` / 请求体 `agent` / `defaults.coordinatorAgentName` / 群内第一个 `kind=agent && isActive` 解析，**不以** `agent_instances` 行作为协调者来源。
+pet token 对 `/v1/groups*` 与 `POST /v1/chat` 的可读可写范围 = **当前登录 WP 用户作为成员的群**（Connecter 用登录 overlay / `pets[].wpAuth` 代登 WP），**不限于** `relay.json` → `pets[].groups`，也**不再**等于门面账号能看见的全部群。非成员访问群详情 / 消息 / 发言 → **403** `NOT_IN_GROUP`。成员判定优先 `authUserId ===` 登录 `userId`；群内尚无人绑定 `authUserId` 时回退为信任 WP 列表（canary 「我」常见未绑）。`agent_instances` 仍用于 ack 路由。
 
 ---
 
@@ -55,21 +60,59 @@ pet token 对 `/v1/groups*` 与扩展后的 `POST /v1/chat` 的可读可写范�
 探活，无需鉴权。
 
 ```json
-{ "ok": true, "service": "connecter-relay" }
+{
+  "ok": true,
+  "service": "connecter-relay",
+  "host": { "role": "host|connecter|standalone", "linked": true, "siteId": "windows-dev", "lastError": null }
+}
 ```
+
+站点 Connecter 出站加入 Host：`POST /v1/host/peers/register` `{ siteId, token }`（Host `host.peers[]` 预配）；心跳 `POST /v1/host/peers/heartbeat`（peer bearer）。ops `GET /v1/host/peers`。本站聊天仍不经 Host。
+
+### `POST /v1/auth/login`（匿名）
+
+WorkPet 用 WP 用户名密码登录。Connecter 代登当前 env 的 WP，签发/复用 pet token，并把凭据放进进程内 overlay（**不**写 git、不回传密码）。Connecter 重启后需再登。
+
+**Body** `{ "username": "<WP>", "password": "<WP>", "env": "canary" }`
+
+**200** `{ "token", "petId", "username", "userId", "env" }`  
+**400** 缺字段 · **401** `LOGIN_FAILED` · **403** `PROD_FORBIDDEN`
 
 ### `GET /v1/envs`
 
-列出已配置 backend（无密码）。
+列出 WP 槽位（`relay.json` backends ∪ 心跳未过期的自注册），**无密码**。每项带 `alive`（探 `GET {baseUrl}/api/health`）和 `source`（`config` | `register`）。
 
 **200**
 
 ```json
 {
-  "envs": [{ "name": "canary", "baseUrl": "http://127.0.0.1:8081", "kind": "workpanel" }],
+  "envs": [{
+    "name": "canary",
+    "baseUrl": "http://127.0.0.1:8082",
+    "kind": "workpanel",
+    "source": "register",
+    "alive": true
+  }],
   "defaults": { "env": "canary", "group": "灰度测试", "coordinatorAgentName": "Cursor Agent" }
 }
 ```
+
+WorkPet 不下发 prod。桌宠不扫描局域网。
+
+### `POST /v1/backends/register`（ops）
+
+本机/旁路 WP **出站**登记槽位（覆盖同名静态 backend 的 baseUrl）。TTL 默认 90s（`wpSlotHeartbeatTtlSec`）。
+
+**Body** `{ "name": "canary", "baseUrl": "http://127.0.0.1:8082", "kind": "workpanel", "auth": { "username": "...", "password": "..." } }`  
+`auth` 可省略（沿用该槽已登记或 `relay.json` 门面账号）。禁止 `name=prod`。
+
+**200** `{ "ok": true, "slot": { "name", "baseUrl", "kind" } }`
+
+### `POST /v1/backends/heartbeat`（ops）
+
+**Body** `{ "name": "canary" }` → **200** `{ "ok": true, "name": "canary" }`。未知槽 **404**。
+
+本地登记：`npm run wp-slot -- --baseUrl http://127.0.0.1:8082 --name canary`（读 `relay.json` ops token，可 `--loop`）。
 
 ### `GET /v1/instances`（pet）
 
@@ -79,7 +122,7 @@ pet token 对 `/v1/groups*` 与扩展后的 `POST /v1/chat` 的可读可写范�
 
 ### `GET /v1/groups?env=`（pet · 群控制台）
 
-代理 WP `GET /api/groups`。`env` 缺省 canary。
+代理 WP `GET /api/groups`，再按登录用户成员身份过滤。`env` 缺省 canary。非成员群不会出现在列表里。
 
 **200**
 
@@ -260,10 +303,10 @@ WP 若无 `unreadCount` 则字段省略。
 }]
 ```
 
-`wpAuth` = 该桌宠对应的 **WP 用户**（群里 `kind=user` 且 `authUserId` 已绑定）。省略时回落 `backends.*.auth` 门面账号。WorkPet **不**直连 WP，仍只用 pet token。
+`wpAuth` = 该桌宠对应的 **WP 用户**（群里 `kind=user` 且 `authUserId` 已绑定）。省略时回落 `backends.*.auth` 门面账号。WorkPet **不**直连 WP：登录走 `POST /v1/auth/login`，之后只用 pet token。
 
 启动时 upsert `pets` / `agent_instances` / `sessions`。动态 `POST /v1/register` = 二期。  
-`pets[].groups` 仍是默认值班绑定；**不**限制 `/v1/groups*` 或 chat 的门面可见群范围（见 §1.3 G11）。
+`pets[].groups` 仍是默认值班绑定；**不**扩大可见范围。可见范围见 §1.3 G11（自己所在的群）。
 
 `GET /v1/members`：`selfMemberId` + 成员 `self` / `online`（用户在线来自 WP `GET /api/presence`；Pet 心跳 `POST /api/presence/heartbeat`）。展开面板主路径仍是 `GET /v1/groups*`。
 
@@ -280,7 +323,8 @@ WP 若无 `unreadCount` 则字段省略。
 
 **展开面板 / 群控制台（P2.4）**
 
-1. `GET /v1/groups?env=` 填群下拉  
+0. `POST /v1/auth/login`（未登录不拉群）  
+1. `GET /v1/groups?env=` 填群下拉（仅自己所在的群）  
 2. `GET /v1/groups/:id` 成员 + 在线；`GET /v1/groups/:id/messages` 为主 transcript（约 2s 轮询）  
 3. 发送仍走扩展后的 `POST /v1/chat`（`petName`、可选 `@Agent`）；ack 仍可另轮询 `GET /v1/messages`  
 

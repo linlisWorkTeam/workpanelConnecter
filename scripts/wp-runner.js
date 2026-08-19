@@ -4,7 +4,7 @@
  * Outbound only. Set writeBack=false so Connecter does not duplicate into the group.
  *
  * Env:
- *   CONNECTER_RELAY_URL     default http://127.0.0.1:9080
+ *   CONNECTER_RELAY_URL     the one Connecter hub (co-located: http://127.0.0.1:9080; LAN: http://<hub>:9080)
  *   CONNECTER_RUNNER_ID     required unless --agentId
  *   CONNECTER_RUNNER_TOKEN  required unless in relay.json runners[]
  *   CONNECTER_RELAY_CONFIG  default config/relay.json

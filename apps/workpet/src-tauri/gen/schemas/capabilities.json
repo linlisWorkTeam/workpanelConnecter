@@ -1,1 +1,1 @@
-{"default":{"identifier":"default","description":"WorkPet 默认权限：窗口尺寸控制 + 配置读取","local":true,"windows":["pet"],"permissions":["core:default","core:window:allow-set-size","core:window:allow-set-focus","core:window:allow-start-dragging"]}}
+{"default":{"identifier":"default","description":"WorkPet 默认权限：窗口尺寸控制 + 配置读写","local":true,"windows":["pet"],"permissions":["core:default","core:window:allow-set-size","core:window:allow-set-focus","core:window:allow-start-dragging"]}}

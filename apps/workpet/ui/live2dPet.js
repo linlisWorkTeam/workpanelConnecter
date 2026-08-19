@@ -18,6 +18,7 @@ export class Live2DPet {
   }
 
   async init(config) {
+    this.destroy();
     this.config = normalizeLive2dConfig(config);
     try {
       if (!window.WebGLRenderingContext) throw new Error('当前 WebView 不支持 WebGL');

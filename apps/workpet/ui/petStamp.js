@@ -80,8 +80,8 @@ export function renderMessageAuthor(msg, petName) {
 }
 
 /** Whether expand() should start console polling after await loadGroups(). */
-export function shouldStartConsolePolling({ panelOpen, consolePaused }) {
-  return Boolean(panelOpen) && !consolePaused;
+export function shouldStartConsolePolling({ panelOpen, consolePaused, loggedIn }) {
+  return Boolean(panelOpen) && !consolePaused && Boolean(loggedIn);
 }
 
 export const XIAOAI_DONE_STATUSES = ['completed', 'failed', 'error', 'delivered'];
@@ -130,10 +130,12 @@ export function isStaleGroupFetch(requestedId, currentId, panelOpen) {
   return requestedId !== currentId;
 }
 
-const ENV_LABELS = { canary: '本地', remote: '远端', prod: '生产' };
+const ENV_LABELS = { canary: '灰度', remote: '远端', prod: '生产' };
 
-/** CONNECTED SPACE 服务器下拉显示名：canary=本地，remote=远端。 */
-export function envDisplayName(name) {
+/** CONNECTED SPACE 下拉名：优先 Connecter 下发的 label，其次通用名（不把 canary 叫「本地」）。 */
+export function envDisplayName(name, label) {
+  const custom = String(label || '').trim();
+  if (custom) return custom;
   const key = String(name || '').trim();
   return ENV_LABELS[key] || key || '服务器';
 }
@@ -148,9 +150,45 @@ export function envHostLabel(baseUrl) {
 }
 
 export function envOptionLabel(row) {
-  const name = envDisplayName(row?.name);
+  const name = envDisplayName(row?.name, row?.label);
   const host = envHostLabel(row?.baseUrl);
-  return host ? `${name} · ${host}` : name;
+  const base = host ? `${name} · ${host}` : name;
+  if (row?.alive === false) return `${base} · 离线`;
+  return base;
+}
+
+/** Pet-facing link status. Never show siteId / tokens / peer registry. */
+export function connectionBadgeText(health, { loggedIn = true } = {}) {
+  if (!loggedIn) return '未登录';
+  if (!health || health.ok === false) return '连接失败';
+  const role = health.host?.role;
+  const linked = health.host?.linked === true;
+  if (role === 'connecter' && linked) return '在线 · 已会合';
+  if (role === 'connecter' && linked === false) return '在线 · 仅本站';
+  return '在线';
+}
+
+export function connectionSysLine(health, { loggedIn = true } = {}) {
+  if (!loggedIn) return '登录后才能看群；只能看到自己所在的群。';
+  const role = health?.host?.role;
+  const linked = health?.host?.linked === true;
+  if (role === 'connecter' && linked) {
+    return '已会合。成员条只显示当前群里的人。';
+  }
+  if (role === 'connecter') {
+    return `已连接 ${health.service || 'Connecter'}（尚未会合，只看本站群成员）`;
+  }
+  return `已连接 ${health?.service || 'Connecter'}`;
+}
+
+/** Group console: people in this group only (no Host/site chips). */
+export function groupVisibleMembers(members) {
+  return (members || []).filter((m) => {
+    if (!m?.displayName) return false;
+    const kind = String(m.kind || '').toLowerCase();
+    if (kind === 'host' || kind === 'peer' || kind === 'site') return false;
+    return true;
+  });
 }
 
 /** Pet 控制台不展示 prod（allowProdFromPet 默认关）。 */

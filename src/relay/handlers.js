@@ -1,5 +1,10 @@
 import { resolveBackend, listEnvs } from './router.js';
 import {
+  annotateAlive,
+  upsertWpSlot,
+  touchWpSlot,
+} from './wpSlots.js';
+import {
   dispatchWorkPanel,
   wpListGroups,
   wpGetGroup,
@@ -9,6 +14,7 @@ import {
   wpSession,
   pickSender,
   serverForPet,
+  selfInGroup,
 } from '../workpanelClient.js';
 import {
   toGroupListItem,
@@ -22,6 +28,7 @@ import {
   listAgentInstancesForPet,
   revokePetSessions,
   ensureAgentInstance,
+  issueLoginPet,
 } from './registry.js';
 import { acceptUpMessage, pollMessages } from './messaging.js';
 import { pickAdminAgent } from './mentions.js';
@@ -40,6 +47,9 @@ import {
   isRunnerHeartbeatFresh,
   runnerHeartbeatTtlSec,
 } from './runners.js';
+import { hostRole, registerHostPeer, heartbeatHostPeer, listHostPeers } from './hostPeers.js';
+import { hostJoinState } from './hostJoin.js';
+import { setSessionWpAuth } from './sessionWpAuth.js';
 
 function backendAsServer(backend) {
   return {
@@ -63,19 +73,121 @@ export function createHandlers({ config }) {
     }
   }
 
+  async function denyIfNotMember(server, got) {
+    let session = { userId: null };
+    try {
+      session = await wpSession(server, { timeoutMs: 4000 });
+    } catch {
+      session = { userId: null };
+    }
+    if (!selfInGroup(got.group, got.members, { userId: session.userId })) {
+      return {
+        denied: {
+          status: 403,
+          body: { error: 'not a member of this group', code: 'NOT_IN_GROUP' },
+        },
+        session,
+      };
+    }
+    return { denied: null, session };
+  }
+
   return {
     health() {
+      const join = hostJoinState();
       return {
         status: 200,
-        body: { ok: true, service: 'connecter-relay' },
+        body: {
+          ok: true,
+          service: 'connecter-relay',
+          host: {
+            role: hostRole(config),
+            linked: join.linked,
+            siteId: join.siteId,
+            lastError: join.lastError,
+          },
+        },
       };
     },
 
-    envs() {
+    async login(body = {}) {
+      const username = String(body.username || '').trim();
+      const password = String(body.password || '');
+      if (!username || !password) {
+        return { status: 400, body: { error: 'username and password required' } };
+      }
+      try {
+        const resolved = resolveBackend(config, body.env, { client: 'pet' });
+        const server = {
+          kind: 'workpanel',
+          baseUrl: resolved.backend.baseUrl,
+          auth: { username, password },
+        };
+        const session = await wpSession(server, { force: true });
+        const issued = await issueLoginPet(config, { username });
+        setSessionWpAuth(issued.petId, {
+          username,
+          password,
+          wpUserId: session.userId,
+        });
+        return {
+          status: 200,
+          body: {
+            token: issued.token,
+            petId: issued.petId,
+            username,
+            userId: session.userId,
+            env: resolved.env,
+          },
+        };
+      } catch (err) {
+        if (err.code === 'PROD_FORBIDDEN') {
+          return { status: 403, body: { error: err.message, code: err.code } };
+        }
+        const msg = String(err.message || err);
+        if (msg.includes('wp login failed')) {
+          return { status: 401, body: { error: 'invalid credentials', code: 'LOGIN_FAILED' } };
+        }
+        return { status: 502, body: { error: msg } };
+      }
+    },
+
+    async envs() {
+      const envs = await annotateAlive(listEnvs(config));
       return {
         status: 200,
-        body: { envs: listEnvs(config), defaults: config.defaults || {} },
+        body: { envs, defaults: config.defaults || {} },
       };
+    },
+
+    async backendRegister(auth, body = {}) {
+      if (auth.kind !== 'ops') {
+        return { status: 403, body: { error: 'ops token required' } };
+      }
+      try {
+        const slot = await upsertWpSlot({
+          name: body.name || body.env,
+          baseUrl: body.baseUrl,
+          kind: body.kind,
+          auth: body.auth,
+        });
+        return { status: 200, body: { ok: true, slot } };
+      } catch (err) {
+        const status = err.code === 'PROD_FORBIDDEN' ? 403 : 400;
+        return { status, body: { error: err.message, code: err.code } };
+      }
+    },
+
+    async backendHeartbeat(auth, body = {}) {
+      if (auth.kind !== 'ops') {
+        return { status: 403, body: { error: 'ops token required' } };
+      }
+      try {
+        return { status: 200, body: await touchWpSlot(body.name || body.env) };
+      } catch (err) {
+        const status = err.code === 'UNKNOWN_SLOT' ? 404 : 400;
+        return { status, body: { error: err.message, code: err.code } };
+      }
     },
 
     instances(auth) {
@@ -98,11 +210,25 @@ export function createHandlers({ config }) {
           body: { error: listed.error || 'wp groups failed', code: 'WP_GROUPS_FAILED' },
         };
       }
+      let session = { userId: null };
+      try {
+        session = await wpSession(gate.server, { timeoutMs: 4000 });
+      } catch {
+        session = { userId: null };
+      }
+      const visible = [];
+      for (const row of listed.groups || []) {
+        const got = await wpGetGroup(gate.server, row.id);
+        if (!got.ok) continue;
+        if (selfInGroup(got.group, got.members, { userId: session.userId })) {
+          visible.push(row);
+        }
+      }
       return {
         status: 200,
         body: {
           env: gate.resolved.env,
-          groups: listed.groups.map(toGroupListItem),
+          groups: visible.map(toGroupListItem),
         },
       };
     },
@@ -120,13 +246,10 @@ export function createHandlers({ config }) {
           body: { error: got.error || 'wp group failed', code: 'WP_GROUPS_FAILED' },
         };
       }
+      const gateMember = await denyIfNotMember(gate.server, got);
+      if (gateMember.denied) return gateMember.denied;
       await wpPresenceHeartbeat(gate.server, { timeoutMs: 3000 });
-      let session = { userId: null };
-      try {
-        session = await wpSession(gate.server, { timeoutMs: 4000 });
-      } catch {
-        session = { userId: null };
-      }
+      const session = gateMember.session;
       const presence = await wpGetPresence(gate.server);
       const onlineUserIds = presence.ok ? presence.onlineUserIds : [];
       const members = got.members || [];
@@ -152,6 +275,18 @@ export function createHandlers({ config }) {
     async groupMessages(auth, id, query = {}) {
       const gate = petBackend(auth, query.env);
       if (gate.error) return gate.error;
+      const got = await wpGetGroup(gate.server, id);
+      if (!got.ok) {
+        if (got.status === 404) {
+          return { status: 404, body: { error: got.error || 'group not found' } };
+        }
+        return {
+          status: 502,
+          body: { error: got.error || 'wp messages failed', code: 'WP_GROUPS_FAILED' },
+        };
+      }
+      const gateMember = await denyIfNotMember(gate.server, got);
+      if (gateMember.denied) return gateMember.denied;
       const listed = await wpListGroupMessages(gate.server, id, { limit: query.limit });
       if (!listed.ok) {
         if (listed.status === 404) {
@@ -203,6 +338,9 @@ export function createHandlers({ config }) {
             body: { error: got.error || 'wp group failed', code: 'WP_GROUPS_FAILED' },
           };
         }
+
+        const chatMember = await denyIfNotMember(server, got);
+        if (chatMember.denied) return chatMember.denied;
 
         await wpPresenceHeartbeat(server, { timeoutMs: 3000 });
 
@@ -424,13 +562,10 @@ export function createHandlers({ config }) {
           body: { error: got.error || 'wp group failed' },
         };
       }
+      const gateMember = await denyIfNotMember(gate.server, got);
+      if (gateMember.denied) return gateMember.denied;
       await wpPresenceHeartbeat(gate.server, { timeoutMs: 3000 });
-      let session = { userId: null };
-      try {
-        session = await wpSession(gate.server, { timeoutMs: 4000 });
-      } catch {
-        session = { userId: null };
-      }
+      const session = gateMember.session;
       const presence = await wpGetPresence(gate.server);
       const onlineUserIds = presence.ok ? presence.onlineUserIds : [];
       const members = got.members || [];
@@ -540,6 +675,24 @@ export function createHandlers({ config }) {
           return { status: 403, body: { error: 'ops token required' } };
         }
         return { status: 200, body: { agents: listRunnerBindings({ env, group }) } };
+      },
+
+      hostPeerRegister(body) {
+        return registerHostPeer(config, body);
+      },
+
+      hostPeerHeartbeat(auth) {
+        if (auth.kind !== 'peer') {
+          return { status: 403, body: { error: 'peer token required' } };
+        }
+        return heartbeatHostPeer(auth.peer);
+      },
+
+      hostPeerList(auth) {
+        if (auth.kind !== 'ops') {
+          return { status: 403, body: { error: 'ops token required' } };
+        }
+        return { status: 200, body: { peers: listHostPeers(config) } };
       },
   };
 }

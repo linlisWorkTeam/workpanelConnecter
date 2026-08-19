@@ -8,6 +8,7 @@ import { openDb, getDbPath, closeDb } from './db.js';
 import { syncConfigPets } from './registry.js';
 import { syncConfigRunners } from './runners.js';
 import { resumePending } from './delivery.js';
+import { startHostJoin, stopHostJoin } from './hostJoin.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, '../..');
@@ -109,12 +110,23 @@ export function createRelayServer(options = {}) {
         return send(res, h.status, h.body);
       }
 
+      if (req.method === 'POST' && pathname === '/v1/agents/register') {
+        const body = await readJson(req);
+        const h = await handlers.agentRegister(body);
+        return send(res, h.status || 200, h.body || {});
+      }
 
-        if (req.method === 'POST' && pathname === '/v1/agents/register') {
-          const body = await readJson(req);
-          const h = await handlers.agentRegister(body);
-          return send(res, h.status || 200, h.body || {});
-        }
+      if (req.method === 'POST' && pathname === '/v1/host/peers/register') {
+        const body = await readJson(req);
+        const h = await handlers.hostPeerRegister(body);
+        return send(res, h.status || 200, h.body || {});
+      }
+
+      if (req.method === 'POST' && pathname === '/v1/auth/login') {
+        const body = await readJson(req);
+        const h = await handlers.login(body);
+        return send(res, h.status || 200, h.body || {});
+      }
 
       const consolePath =
         pathname === '/v1/groups' ||
@@ -128,7 +140,19 @@ export function createRelayServer(options = {}) {
       }
 
       if (req.method === 'GET' && pathname === '/v1/envs') {
-        const h = handlers.envs();
+        const h = await handlers.envs();
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'POST' && pathname === '/v1/backends/register') {
+        const body = await readJson(req);
+        const h = await handlers.backendRegister(auth, body);
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'POST' && pathname === '/v1/backends/heartbeat') {
+        const body = await readJson(req);
+        const h = await handlers.backendHeartbeat(auth, body);
         return send(res, h.status, h.body);
       }
 
@@ -235,6 +259,16 @@ export function createRelayServer(options = {}) {
           });
           return send(res, h.status, h.body);
         }
+
+        if (req.method === 'POST' && pathname === '/v1/host/peers/heartbeat') {
+          const h = handlers.hostPeerHeartbeat(auth);
+          return send(res, h.status, h.body);
+        }
+
+        if (req.method === 'GET' && pathname === '/v1/host/peers') {
+          const h = handlers.hostPeerList(auth);
+          return send(res, h.status, h.body);
+        }
       return send(res, 404, { error: 'not found', path: pathname });
     } catch (err) {
       return send(res, 500, { error: String(err.message || err) });
@@ -262,10 +296,15 @@ export async function listenRelay(options = {}) {
       const envs = Object.keys(config.backends || {}).join(',');
       const pets = (config.pets || []).length;
         const runners = (config.runners || []).length;
+      const join = startHostJoin(config);
+      server.on('close', () => {
+        join.stop();
+        stopHostJoin();
+      });
       console.log(
         `connecter-relay listening http://${host}:${port} config=${cfgPath} backends=${envs} pets=${pets} db=${boot.dbPath}`
       );
-      resolve({ server, port, host, config, cfgPath, dbPath: boot.dbPath });
+      resolve({ server, port, host, config, cfgPath, dbPath: boot.dbPath, stopHostJoin: join.stop });
     });
   });
 }

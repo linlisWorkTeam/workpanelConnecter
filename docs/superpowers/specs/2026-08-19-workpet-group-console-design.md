@@ -10,9 +10,9 @@
 | # | 决策 |
 |---|------|
 | G1 | 桌宠仍是主界面；**展开后**是迷你群控制台：切群、成员在线、`@Agent` 调度、最近群消息 |
-| G2 | 桌宠**只连 Connecter**（pet token）；不直连 WorkPanel，本期**不做** WorkPet 上的 WP 登录态 |
-| G3 | 切群范围 = 门面账号在**当前 env** 的 WP 上能进入的全部群（不限于 `relay.json` 的 `pets[].groups`） |
-| G4 | 未配 `pets[].wpAuth` 时可用门面账号代发；配了则以该 WP 用户发言（G12） |
+| G2 | 桌宠**只连 Connecter**；不直连 WorkPanel。WP 账号经 `POST /v1/auth/login` 由 Connecter 代登 |
+| G3 | 切群范围 = **登录用户作为成员**的群（当前 env），不限于 `pets[].groups`，也不等于门面账号能看见的全部群 |
+| G4 | 未配 `pets[].wpAuth` 且尚未登录时可用门面账号代发；登录后以该 WP 用户发言（G12） |
 | G5 | 控制台里本宠气泡显示配置中的 `petName`（如「林的Pet」），不显示门面用户名 |
 | G6 | `@显示名` 只改投递目标（`mentionMemberIds` + 正文 `@`）；对不上则**拒绝发送并提示** |
 | G7 | 无 `@` 时：**只**投该群配置的**管理员**（值班/协调）。**未配置管理员 → 不发送、无人答复**（禁止再默认点名 Cursor Agent 或任意 Agent） |
@@ -20,16 +20,16 @@
 | G8 | 用户在线 = WP `GET /api/presence` 的 `onlineUserIds`；Agent 在线 = 群成员 `isActive` |
 | G9 | 最近消息 = 代理 WP `GET /api/groups/{id}/messages`，默认约 50 条；**不**用现有 `GET /v1/messages` ack 日志做主列表 |
 | G10 | 现有 `GET /v1/messages` / 幂等 chat / pet→prod 403 不回归 |
-| G11 | pet token 可读可写范围升到与门面账号同一组群；必须写进 `api-relay.md` |
+| G11 | pet token 可读可写范围 = 登录用户所在的群；非成员 **403** `NOT_IN_GROUP`；必须写进 `api-relay.md` |
 | G12 | **进行中（Connecter 已写；WP heartbeat 待 canary）**：Pet = WP 用户；`wpAuth` + HTTP presence。见 §8 |
 
 ## 2. 目标与非目标
 
-**目标：** 用户在桌宠展开面板里能切换门面可见群、看成员是否在线、用 `@Agent` 调度、阅读最近群消息；本宠发言在面板上显示为 `petName`。
+**目标：** 用户先登录 WorkPet，再在展开面板里切换**自己所在的群**、看成员是否在线、用 `@Agent` 调度、阅读最近群消息；本宠发言在面板上显示为 `petName`。
 
 **非目标（本期）：**
 
-- WorkPet / Connecter 实现 WP 用户登录或 Pet 独立成员
+- 桌宠直连 WorkPanel 或 Connecter Host
 - WebSocket；改用长连接替代轮询
 - 把 Connecter 做成业务网页
 - `@` 用户-only 的纯 IM（无 Agent 则走 G7 或拒绝；本期不允许「只 @ 人、不调度 Agent」的第三条路径）
@@ -38,15 +38,16 @@
 ## 3. 拓扑
 
 ```text
-WorkPet 展开面板 ──pet token──► Connecter /v1/groups* 和 /v1/chat
-                                      │
-                                      │ 门面账号 login
-                                      ▼
-                               WorkPanel /api/groups
-                                         /api/groups/{id}
-                                         /api/groups/{id}/messages
-                                         /api/presence
-                                         POST /api/messages  (@目标 Agent)
+WorkPet 展开面板 ──login + pet token──► Connecter /v1/auth/login、/v1/groups*、/v1/chat
+                                              │
+                                              │ 登录用户 WP 凭据（overlay / wpAuth）
+                                              ▼
+                                       WorkPanel /api/auth/login
+                                                 /api/groups
+                                                 /api/groups/{id}
+                                                 /api/groups/{id}/messages
+                                                 /api/presence
+                                                 POST /api/messages  (@目标 Agent)
 ```
 
 Connecter 仍只做调度/中继。群数据不在 SQLite 做第二份历史；代理 WP 实时结果。`agent_instances` 继续用于默认值班 Agent 解析；**不再**作为「能否进入该群」的门槛。
@@ -199,9 +200,9 @@ WP 若无 `unreadCount` 则省略或给 `0`。失败 → **502** `{ "error": "�
 1. **不**新增 `kind=pet`。Pet = 已绑定 `authUserId` 的 `kind=user` 成员。
 2. Connecter `pets[].wpAuth` 登录该用户；`senderMemberId` 为其成员；不再用「任意活跃用户」或优先 owner 冒名（owner 仅当 `authUserId` 为空时的遗留回退）。
 3. WP `POST /api/presence/heartbeat`（TTL 90s）+ Connecter 在 members/chat 时心跳。`GET /api/presence` 含 HTTP 在线。
-4. WorkPet 仍只持 pet token（G2）；WP 账号只存在 `relay.json`。
+4. WorkPet 只持 pet token；WP 密码经 Connecter 登录进入进程 overlay，不进 git。
 
-**未完成：** WP canary 未部署 heartbeat；灰度 owner「我」未绑 `auth_user_id`。WorkPet 不做 WP 登录页。
+**未完成：** WP canary 未部署 heartbeat；灰度 owner「我」未绑 `auth_user_id`（未绑时信任 WP 群列表）。
 
 ## 9. 实现落点（供计划，非本期编码）
 
@@ -215,4 +216,4 @@ WP 若无 `unreadCount` 则省略或给 `0`。失败 → **502** `{ "error": "�
 
 ## 10. 明确不做（直到改规范）
 
-与 `NEXT-DEV-PATH.md` §4 相同，外加：本期不在 WorkPet 做 WP 登录；不把群历史镜像进 Connecter SQLite。
+与 `NEXT-DEV-PATH.md` §4 相同，外加：不把群历史镜像进 Connecter SQLite。桌宠仍不直连 WP。
