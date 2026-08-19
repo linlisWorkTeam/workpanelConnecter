@@ -11,6 +11,7 @@ import {
   matchAgentPrefix,
   matchesOptimisticBubble,
   renderMessageAuthor,
+  shouldAnnounceRun,
   shouldStartConsolePolling,
   stripPetStamp,
 } from '../ui/petStamp.js';
@@ -177,6 +178,12 @@ test('isXiaoaiDoneStatus only terminal results', () => {
   assert.equal(isXiaoaiDoneStatus('failed'), true);
   assert.equal(isXiaoaiDoneStatus('accepted'), false);
   assert.equal(isXiaoaiDoneStatus('running'), false);
+});
+
+test('shouldAnnounceRun only on transition into done', () => {
+  assert.equal(shouldAnnounceRun('accepted', 'delivered'), true);
+  assert.equal(shouldAnnounceRun('delivered', 'delivered'), false);
+  assert.equal(shouldAnnounceRun('running', 'accepted'), false);
 });
 
 test('formatXiaoaiAnnounce success with latest agent text', () => {

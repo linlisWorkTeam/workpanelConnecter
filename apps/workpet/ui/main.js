@@ -9,11 +9,14 @@ import {
 } from './petConfig.js';
 import {
   isStaleGroupFetch,
+  isXiaoaiDoneStatus,
   matchesOptimisticBubble,
   renderMessageAuthor,
+  shouldAnnounceRun,
   shouldStartConsolePolling,
+  formatXiaoaiAnnounce,
 } from './petStamp.js';
-import { readXiaoaiEnabled } from './xiaoaiAnnounce.js';
+import { postXiaoaiAnnounce, readXiaoaiEnabled } from './xiaoaiAnnounce.js';
 
 const $ = (id) => document.getElementById(id);
 const app = $('app');
@@ -48,6 +51,7 @@ let agentMembers = [];
 const renderedMessageIds = new Set();
 const pendingOptimistic = new Map();
 const runPolls = {};
+const runAnnounced = new Set();
 
 const pet = new Live2DPet({
   canvas: $('live2dCanvas'),
@@ -488,7 +492,8 @@ async function send() {
       id,
     });
     addMsg('已受理', 'sys', [response.messageId, ...(response.runIds || [])].filter(Boolean).join(' · '));
-    (response.runIds || []).forEach(pollRun);
+    const agent = response.mentionedAgent || response.coordinatorAgent || '';
+    (response.runIds || []).forEach((runId) => pollRun(runId, { agent }));
     setPetState('idle');
   } catch (error) {
     const pending = pendingOptimistic.get(id);
@@ -517,21 +522,63 @@ async function send() {
   }
 }
 
-async function pollRun(runId) {
+async function pollRun(runId, meta = {}) {
   if (!client || runPolls[runId]) return;
   runPolls[runId] = true;
   const max = cfg.maxRunPolls || 30;
+  let prev = '';
   for (let count = 0; count < max; count += 1) {
     await new Promise((resolve) => setTimeout(resolve, cfg.pollIntervalMs || 2000));
     try {
       const row = await client.runs(runId);
-      if (row?.status && !['queued', 'running', 'starting'].includes(row.status)) {
-        addMsg(`run ${runId.slice(0, 8)} → ${row.status}`, 'sys');
+      const status = row?.status || '';
+      if (status && status !== prev && !['queued', 'running', 'starting'].includes(status)) {
+        addMsg(`run ${runId.slice(0, 8)} → ${status}`, 'sys');
+      }
+      if (shouldAnnounceRun(prev, status) && !runAnnounced.has(runId)) {
+        runAnnounced.add(runId);
+        await announceRunIfEnabled({ status, agent: meta.agent || row?.agentName || '' });
+      }
+      prev = status;
+      if (isXiaoaiDoneStatus(status) || (status && !['queued', 'running', 'starting', 'accepted'].includes(status))) {
         break;
       }
     } catch (_) { /* 短暂失败留给下一轮 */ }
   }
   delete runPolls[runId];
+}
+
+async function announceRunIfEnabled({ status, agent }) {
+  const enabled = readXiaoaiEnabled(cfg, (k) => {
+    try { return localStorage.getItem(k); } catch { return null; }
+  });
+  let lastAgentText = '';
+  try {
+    if (client && currentGroupId && agent) {
+      const listed = await client.groupMessages(currentGroupId, { limit: 20 });
+      const rows = listed.messages || listed.body?.messages || [];
+      const hit = [...rows].reverse().find(
+        (m) => m.senderKind === 'agent' && m.senderDisplayName === agent
+      );
+      lastAgentText = hit?.contentDisplay || '';
+    }
+  } catch (_) { /* 无正文则只播前缀 */ }
+  const text = formatXiaoaiAnnounce({
+    petName: cfg.petName,
+    agent,
+    status,
+    lastAgentText,
+  });
+  const result = await postXiaoaiAnnounce({
+    enabled,
+    homepageBaseUrl: cfg.homepageBaseUrl,
+    homepagePetToken: cfg.homepagePetToken,
+    text,
+  });
+  if (!result.ok && !result.skipped) {
+    addMsg('小爱没播出去', 'err');
+    showBubble('小爱没播出去');
+  }
 }
 
 async function expand() {

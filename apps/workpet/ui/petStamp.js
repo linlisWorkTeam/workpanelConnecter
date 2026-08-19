@@ -90,6 +90,10 @@ export function isXiaoaiDoneStatus(status) {
   return XIAOAI_DONE_STATUSES.includes(String(status || ''));
 }
 
+export function shouldAnnounceRun(prevStatus, nextStatus) {
+  return !isXiaoaiDoneStatus(prevStatus) && isXiaoaiDoneStatus(nextStatus);
+}
+
 function spokenStatus(status) {
   const s = String(status || '');
   if (s === 'completed' || s === 'delivered') return '已完成';
