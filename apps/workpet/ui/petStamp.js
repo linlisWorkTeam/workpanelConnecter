@@ -84,6 +84,38 @@ export function shouldStartConsolePolling({ panelOpen, consolePaused }) {
   return Boolean(panelOpen) && !consolePaused;
 }
 
+export const XIAOAI_DONE_STATUSES = ['completed', 'failed', 'error', 'delivered'];
+
+export function isXiaoaiDoneStatus(status) {
+  return XIAOAI_DONE_STATUSES.includes(String(status || ''));
+}
+
+function spokenStatus(status) {
+  const s = String(status || '');
+  if (s === 'completed' || s === 'delivered') return '已完成';
+  if (s === 'failed' || s === 'error') return '失败';
+  return s || '已结束';
+}
+
+function stripForSpeech(raw) {
+  let t = String(raw || '').trim();
+  t = t.replace(/[#*`>|]+/g, '');
+  t = t.replace(/\s+/g, ' ').trim();
+  return t;
+}
+
+export function formatXiaoaiAnnounce({ petName, agent, status, lastAgentText } = {}) {
+  const name = String(petName || 'WorkPet').trim() || 'WorkPet';
+  const who = String(agent || 'Agent').trim() || 'Agent';
+  const prefix = `${name}，${who} ${spokenStatus(status)}。`;
+  const extra = stripForSpeech(lastAgentText);
+  if (!extra) return prefix.slice(0, 80);
+  const room = 80 - prefix.length;
+  if (room <= 1) return prefix.slice(0, 80);
+  const body = extra.length <= room ? extra : extra.slice(0, Math.max(0, room - 1)).trimEnd();
+  return `${prefix}${body}`.slice(0, 80);
+}
+
 /**
  * True when a members/messages fetch result must not be applied
  * (group switched or panel collapsed while awaiting).

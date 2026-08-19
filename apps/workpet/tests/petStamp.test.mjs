@@ -5,7 +5,9 @@ import path from 'node:path';
 import vm from 'node:vm';
 import { fileURLToPath } from 'node:url';
 import {
+  formatXiaoaiAnnounce,
   isStaleGroupFetch,
+  isXiaoaiDoneStatus,
   matchAgentPrefix,
   matchesOptimisticBubble,
   renderMessageAuthor,
@@ -167,5 +169,31 @@ test('groups group groupMessages build expected paths', async () => {
   assert.equal(
     calls[2].url,
     'http://example.test/v1/groups/g%201/messages?env=canary&limit=20'
+  );
+});
+
+test('isXiaoaiDoneStatus only terminal results', () => {
+  assert.equal(isXiaoaiDoneStatus('delivered'), true);
+  assert.equal(isXiaoaiDoneStatus('failed'), true);
+  assert.equal(isXiaoaiDoneStatus('accepted'), false);
+  assert.equal(isXiaoaiDoneStatus('running'), false);
+});
+
+test('formatXiaoaiAnnounce success with latest agent text', () => {
+  const text = formatXiaoaiAnnounce({
+    petName: '林的Pet',
+    agent: 'cs',
+    status: 'delivered',
+    lastAgentText: '修好了窗口尺寸。还有一些边距。',
+  });
+  assert.match(text, /^林的Pet，cs 已完成。/);
+  assert.ok(text.length <= 80);
+  assert.match(text, /修好了窗口尺寸/);
+});
+
+test('formatXiaoaiAnnounce failed without body', () => {
+  assert.equal(
+    formatXiaoaiAnnounce({ petName: 'WorkPet', agent: 'cs', status: 'failed', lastAgentText: '' }),
+    'WorkPet，cs 失败。'
   );
 });
