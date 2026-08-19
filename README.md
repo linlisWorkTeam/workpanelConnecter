@@ -46,6 +46,8 @@ npm run dev          # 开发模式（tauri dev）
 npm test                # 冒烟测试（mock）
 npm run test:canary     # 直连 WP 灰度 :8081
 npm run test:relay      # 中继网关门禁
+npm run test:runner     # 可插拔 runner 队列/串行/TTL（无 WP）
+npm run test:e2-canary  # E2 实调用 canary :8081 + wp-runner（无 mock）
 ```
 
 可选：`npm run test:e2e-resume`（杀进程续投）、`npm run test:workpet`。

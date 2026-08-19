@@ -3,7 +3,7 @@
 > 日期：2026-08-10 · 角色：cs（Connecter 侧）  
 > 背景：云主机内存仅够约 **2 个 Agent session**；希望参考 Raft「节点可分散部署」、本机跑 Agent；WorkPet/Connecter 现状是 **Team↔Team 中继**，尚未做 **Team 内跨机 Agent 直达**。  
 > 关联：`docs/workconnector-system-design.md` · `docs/NEXT-DEV-PATH.md` · `docs/bridge-deepseek-harness.md`
-> 定位：Connecter = **各 WorkPanel ↔ DeepSeek Harness 的桥上中继**；E1 的「本机 Runner」即 DeepSeek Harness（dsh），见桥接设计文档。
+> 定位：Connecter = **各 WorkPanel ↔ 可插拔 Runner 的桥上中继**。DeepSeek Harness（dsh）只是 **一种** 未来 Runner，**不是** 槽位本身；E4 达线后再由 dsh 用同一 `/v1/agents/*` 自举。见 `docs/superpowers/specs/2026-08-19-e2-pluggable-runner-design.md`。
 
 ## 1. 问题重新表述
 
@@ -61,7 +61,7 @@
 
 ## 4. 分阶段路线（建议拍板）
 
-### 阶段 E1 — 减压：Agent 外置注册（优先）
+### 阶段 E1 — 减压：Agent 外置注册（优先） — **✅ 代码骨架（2026-08-19 `6b6b4f6`）**
 
 **产出**
 
@@ -72,21 +72,24 @@
 
 **验收**：同群 1 个云 Agent + 1 个本机 Runner；云内存不随「想法变多」线性涨。
 
-### 阶段 E2 — Team 内跨机通信打通
+### 阶段 E2 — Team 内跨机通信打通 — **✅ 可插拔 Runner + canary 实调用（2026-08-19）**
 
-- 上行：WorkPet / WP → Connecter → **指定 endpoint**（不再一律进云 session）  
-- 下行：Runner 回调或 Connecter 轮询 Runner 状态 → `/v1/messages`（补齐「全文回显」P2.3）  
-- 策略：同 Agent 串行仍可按 agentId 在 Connecter 侧排队（逻辑串行，物理分散）
+- 上行：WorkPet / WP → Connecter → **已注册 Runner 队列**（不再一律进云 session）  
+- 下行：`tasks/result` → **`/v1/messages` 全文**（P2.3）；WP 群回写 best-effort  
+- 策略：同 agent 串行 + 心跳 TTL；离线 runner 不入队  
+- **执行端可插拔**：本期第一插件 = **canary WP 实调用适配器**（禁止 echo mock 验收）；任意 Agent 只要走 `/v1/agents/*` 即可顶替；**不**在 Connecter 实现完整 ACP  
+- 规格：`docs/superpowers/specs/2026-08-19-e2-pluggable-runner-design.md`
 
 ### 阶段 E3 — Team↔Team 强化（现有能力加深）
 
 - WP→Connecter 回调、跨 env 审计（原 P2）  
 - 协调门面从「群 admin Agent」演进为 **非 AI 协调算法**（原架构债）
 
-### 阶段 E4 — 中继自身 HA（可选 Raft）
+### 阶段 E4 — 中继 HA + dsh 自举（远期）
 
-- Connecter 双机 + 成员表共识；消息仍 SQLite/外置队列  
-- 仅当中继可用性成为瓶颈时立项
+- Connecter 双机 + 成员表共识（可选 Raft/etcd）；消息仍 SQLite/外置队列  
+- **dsh 作为一种 Runner** 接入同一 pull API，接手自举流程  
+- 仅当中继可用性成为瓶颈、或要上真实 Harness 时立项
 
 ## 5. 与现状 / NEXT 的衔接
 
@@ -119,4 +122,4 @@
 
 > Connecter 下一步不是在小服务器上塞更多 Agent，而是做成 **跨机 Agent 注册与路由中枢**（理念对齐 Raft 的成员/心跳/故障发现，而非一上来复制 Raft 日志）。云 WP 只保留薄协调与少量 session；重 Agent 注册到本机/旁路机执行。完整 Raft 共识留到中继要 HA 时再上。
 
-请拍板是否按 **E1 → E2 → E3 → E4** 调整排期；确认后 cs 可出 E1 的接口草案与实现计划。
+排期已按 **E1（骨架已落地）→ E2（当前设计）→ E3 → E4** 执行。E2 不拉 dsh、不做完整 ACP。

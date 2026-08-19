@@ -1,7 +1,7 @@
 import { listPendingAccepted, db } from './db.js';
 import { markDelivered, markFailed } from './messaging.js';
 import { dispatchWorkPanel } from '../workpanelClient.js';
-import { enqueueRunnerTask, findRunnerBinding } from './runners.js';
+import { enqueueRunnerTask, findRunnerBinding, isRunnerHeartbeatFresh, runnerHeartbeatTtlSec } from './runners.js';
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -28,40 +28,26 @@ export async function deliverOnce(config, messageRow) {
   if (instance.env === 'prod' && config.allowProdFromPet === false) {
     await markFailed(messageRow.id, 'prod forbidden', 3);
     return { ok: false, error: 'prod forbidden' };
-
-    // E1: dsh-bound target -> enqueue outbound runner task (even on resume)
-    const binding = findRunnerBinding(instance);
-    if (binding) {
-      const task = await enqueueRunnerTask({
-        runnerId: binding.runner_id,
-        channelId: binding.channel_id,
-        env: instance.env,
-        groupId: instance.group_id,
-        groupName: instance.group_name,
-        agentName: instance.agent_name,
-        upMessage: messageRow,
-        content: envelope.payload?.content || '',
-      });
-      return { ok: true, runIds: [task.id], runner: true };
-    }
-
   }
 
-    // E1: dsh-bound target -> enqueue outbound runner task (even on resume)
-    const binding = findRunnerBinding(instance);
-    if (binding) {
-      const task = await enqueueRunnerTask({
-        runnerId: binding.runner_id,
-        channelId: binding.channel_id,
-        env: instance.env,
-        groupId: instance.group_id,
-        groupName: instance.group_name,
-        agentName: instance.agent_name,
-        upMessage: messageRow,
-        content: envelope.payload?.content || '',
-      });
-      return { ok: true, runIds: [task.id], runner: true };
+  const binding = findRunnerBinding(instance);
+  if (binding) {
+    if (!isRunnerHeartbeatFresh(binding, runnerHeartbeatTtlSec(config))) {
+      await markFailed(messageRow.id, 'runner_offline', 3);
+      return { ok: false, error: 'runner_offline' };
     }
+    const task = await enqueueRunnerTask({
+      runnerId: binding.runner_id,
+      channelId: binding.channel_id,
+      env: instance.env,
+      groupId: instance.group_id,
+      groupName: instance.group_name,
+      agentName: instance.agent_name,
+      upMessage: messageRow,
+      content: envelope.payload?.content || '',
+    });
+    return { ok: true, runIds: [task.id], runner: true };
+  }
 
 
   const backend = config.backends?.[instance.env];

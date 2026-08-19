@@ -23,7 +23,10 @@
     "test:relay-unit": "node scripts/relay-unit-smoke.js",
     "test:group-console": "node scripts/group-console-unit.js",
     "test:runner": "node scripts/relay-runner-smoke.js",
-    "gate:runner": "node scripts/relay-runner-smoke.js"
+    "gate:runner": "node scripts/relay-runner-smoke.js",
+    "wp-runner": "node scripts/wp-runner.js",
+    "test:e2-canary": "node scripts/e2-canary-runner-gate.js",
+    "gate:e2-canary": "node scripts/e2-canary-runner-gate.js"
   },
   "engines": {
     "node": ">=18"

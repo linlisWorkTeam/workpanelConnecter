@@ -1,7 +1,7 @@
-# 下一步开发路径（2026-08-07）
+# 下一步开发路径（2026-08-19）
 
-> 依据：仓库 HEAD `f7db1bc`；MVP Phase 0–4 已完成；规范 `workconnector-system-design.md` N1–N3 / D1–D16。  
-> Owner：群内实现默认 **cs**（codex 仍搁置）；有明确 @ 时再改。
+> 依据：仓库 HEAD `eab47f4`；MVP Phase 0–4 已完成；E1 runners 骨架已合入。  
+> Owner：群内实现默认 **cs**；**E2 设计：** `docs/superpowers/specs/2026-08-19-e2-pluggable-runner-design.md`。
 
 ## 1. 当前基线（已落地，勿回退）
 
@@ -13,7 +13,19 @@
 | E2E E1–E8 | ✅ `docs/workpet-e2e-checklist.md` |
 | 默认 canary / 禁默认 prod / 无 WP promote | ✅ 门禁覆盖 |
 
-**产品形态**：Connecter = 中继 + CLI；GUI 仅 WorkPet；只做多 WP 调度协同，不做业务。
+**产品形态**：Connecter = 中继 + CLI；GUI 仅 WorkPet；只做多 WP 调度协同，不做业务。  
+**Runner**：可插拔执行槽，**不是** DSH 专用；dsh 延后到 E4 自举。
+
+## 1.1 当前主线（E2–E4）
+
+| 阶段 | 状态 | 说明 |
+|------|------|------|
+| E1 | ✅ | `/v1/agents/*` 出站队列（实现曾写死 dsh，E2 要通用化） |
+| **E2** | ✅ | 通用槽 + 串行/TTL + messages 全文 + **canary 实调用**验收（`81024b3`） |
+| E3 | ⏳ | Team↔Team / 协调门面（需 WP） |
+| E4 | ⏳ | 可选 HA；dsh 作为 **一种** Runner 接手 |
+
+**默认下一刀：E2 已合入 origin。本机继续 WorkPet 小爱完成播报；P2.5 仍为 WP ask。**
 
 ## 2. 建议下一程（按优先级）
 
@@ -70,9 +82,9 @@ P0.1 本机桌宠冒烟 ─┬─► P0.2 API 文档 ─► P0.3 运维
                      P2.5 WP Pet 身份（需 WP 配合，待实现）
 ```
 
-**默认建议下一刀：用户完成本机 P0.1；服务端可开 P1.1（443）或进入 P2 设计（WP 回连）。P0.2/P0.3/P2.4 已交付；P2.5 为 WP ask，非本期。**
+**默认建议下一刀：E2 可插拔 Runner（设计见 spec；远端已合入）。** P0.1 仍在用户侧；P0.2/P0.3/P2.4 已交付；P2.5 为 WP ask，非本期；P2.3 全文回显并入 E2。
 
-**2026-08-10 战略更新**：内存瓶颈与「本机跑 Agent / Raft」讨论 → 演进答复见 **`docs/CONNECTER-EVOLUTION.md`（E1 外置注册优先）**。
+**2026-08-10 / 08-19**：演进见 **`docs/CONNECTER-EVOLUTION.md`**；E1 骨架已落地；E2 按可插拔槽设计，dsh 不作为必选项。
 
 ## 4. 明确不做（直到改规范）
 
