@@ -91,7 +91,7 @@ CREATE INDEX IF NOT EXISTS idx_messages_status ON messages(status);
 --       'general' = attachable to any normal group chat (one @DeepSeek per group)
 CREATE TABLE IF NOT EXISTS runners (
   id TEXT PRIMARY KEY,                 -- agentId, e.g. 'dsh-dev-1'
-  agent_type TEXT NOT NULL DEFAULT 'dsh',
+  agent_type TEXT NOT NULL DEFAULT 'runner',
   role TEXT NOT NULL DEFAULT 'general',-- 'special' | 'general'
   channel_id TEXT,
   token_hash TEXT NOT NULL UNIQUE,
@@ -110,7 +110,7 @@ CREATE TABLE IF NOT EXISTS runner_bindings (
   env TEXT NOT NULL,
   group_id TEXT NOT NULL,
   group_name TEXT,
-  agent_name TEXT NOT NULL DEFAULT 'DeepSeek',
+  agent_name TEXT NOT NULL DEFAULT 'Runner',
   status TEXT NOT NULL DEFAULT 'active',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   UNIQUE (env, group_id, agent_name, role),

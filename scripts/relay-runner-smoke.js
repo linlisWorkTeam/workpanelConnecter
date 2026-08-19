@@ -44,6 +44,7 @@ async function main() {
     db: { path: dbPath },
     auth: { tokens: [OPS_TOKEN] },
     allowProdFromPet: false,
+    runnerHeartbeatTtlSec: 60,
     rateLimitPerMin: 120,
     backends: {
       // canary is configured but must NOT be touched: the chat below is dsh-bound
@@ -159,16 +160,51 @@ async function main() {
       headers: runnerHeaders,
       body: JSON.stringify({}),
     });
-    // could be pulled here or after; assert we eventually pull the task
     assert(Array.isArray(empty.body.tasks), 'tasks is array');
     const pulled = empty.body.tasks.find((t) => t.taskId === msgId);
     assert(!!pulled && pulled.prompt === 'runner ping', 'task pulled with prompt');
+
+    // serial: second chat stays queued while first is dispatched
+    const msgId2 = `msg_runner_gate2_${randomUUID()}`;
+    const chat2 = await jsonFetch(`${base}/v1/chat`, {
+      method: 'POST',
+      headers: petHeaders,
+      body: JSON.stringify({ id: msgId2, group: '灰度测试', prompt: 'runner ping 2' }),
+    });
+    assert(chat2.status === 200, 'second chat accepted');
+    const blocked = await jsonFetch(`${base}/v1/agents/tasks`, {
+      method: 'POST',
+      headers: runnerHeaders,
+      body: JSON.stringify({}),
+    });
+    assert(blocked.body.tasks.length === 0, 'serial: no second dispatch while in-flight');
+
+    // two-phase: running down then completed
+    const running = await jsonFetch(`${base}/v1/agents/tasks/result`, {
+      method: 'POST',
+      headers: runnerHeaders,
+      body: JSON.stringify({
+        taskId: msgId,
+        status: 'running',
+        content: 'wp_accepted messageId=wp-fake',
+        writeBack: false,
+      }),
+    });
+    assert(running.status === 200 && running.body.status === 'running', 'running phase');
+
+    const pollRun = await jsonFetch(`${base}/v1/messages?since=0&group=${encodeURIComponent('灰度测试')}`, {
+      headers: { authorization: `Bearer ${PET_TOKEN}` },
+    });
+    assert(
+      pollRun.body.messages.some((m) => String(m.envelope?.payload?.content || '').includes('wp_accepted')),
+      'pet sees first-phase wp_accepted'
+    );
 
     // ---- submit result -> down echo visible to pet ----
     const res = await jsonFetch(`${base}/v1/agents/tasks/result`, {
       method: 'POST',
       headers: runnerHeaders,
-      body: JSON.stringify({ taskId: msgId, status: 'completed', content: 'hello back' }),
+      body: JSON.stringify({ taskId: msgId, status: 'completed', content: 'hello back', writeBack: false }),
     });
     assert(res.status === 200 && res.body.ok === true, 'result ok');
 
@@ -180,6 +216,30 @@ async function main() {
       (m) => m.direction === 'down' && String(m.envelope?.payload?.content || '').includes('hello back')
     );
     assert(seesBack, 'pet poll sees runner down echo');
+
+    const pulled2 = await jsonFetch(`${base}/v1/agents/tasks`, {
+      method: 'POST',
+      headers: runnerHeaders,
+      body: JSON.stringify({}),
+    });
+    assert(pulled2.body.tasks.some((t) => t.taskId === msgId2), 'second task dispatched after first completed');
+    await jsonFetch(`${base}/v1/agents/tasks/result`, {
+      method: 'POST',
+      headers: runnerHeaders,
+      body: JSON.stringify({ taskId: msgId2, status: 'completed', content: 'ok2', writeBack: false }),
+    });
+
+    // TTL: force stale last_seen
+    const { db } = await import('../src/relay/db.js');
+    db()
+      .prepare(`UPDATE runners SET last_seen_at = datetime('now', '-120 seconds') WHERE id = ?`)
+      .run('dsh-gate-1');
+    const stale = await jsonFetch(`${base}/v1/chat`, {
+      method: 'POST',
+      headers: petHeaders,
+      body: JSON.stringify({ id: `msg_stale_${randomUUID()}`, group: '灰度测试', prompt: 'should 503' }),
+    });
+    assert(stale.status === 503 && stale.body.error === 'runner_offline', 'stale runner -> 503');
 
     // ---- special: at most one ----
     const specialConflict = await jsonFetch(`${base}/v1/agents/register`, {

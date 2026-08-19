@@ -48,7 +48,7 @@ export function authenticateRequest(req, config, { rateLimit = true } = {}) {
     return { ok: true, kind: 'ops', petId: null, client: 'ops' };
   }
 
-  // dsh runner token (E1)
+  // runner token (E1/E2 pluggable slot)
   const runner = findRunnerByToken(token);
   if (runner) {
     if (runner.status !== 'active') {

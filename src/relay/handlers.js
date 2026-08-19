@@ -17,6 +17,8 @@ import {
   findRunnerBinding,
   enqueueRunnerTask,
   postRunnerResultToGroup,
+  isRunnerHeartbeatFresh,
+  runnerHeartbeatTtlSec,
 } from './runners.js';
 
 function backendAsServer(backend) {
@@ -113,9 +115,18 @@ export function createHandlers({ config }) {
           };
         }
 
-          // E1: dsh-bound target -> enqueue outbound runner task instead of WP dispatch
+          // E2: runner-bound target -> enqueue (must have fresh heartbeat)
           const runnerBinding = findRunnerBinding(instance);
           if (runnerBinding) {
+            if (!isRunnerHeartbeatFresh(runnerBinding, runnerHeartbeatTtlSec(config))) {
+              return {
+                status: 503,
+                body: {
+                  error: 'runner_offline',
+                  runner: { agentId: runnerBinding.runner_id, channelId: runnerBinding.channel_id },
+                },
+              };
+            }
             const task = await enqueueRunnerTask({
               runnerId: runnerBinding.runner_id,
               channelId: runnerBinding.channel_id,
@@ -303,7 +314,7 @@ export function createHandlers({ config }) {
         }
         const r = await submitRunnerTaskResult(config, auth.runner, body);
         // E2: best-effort write-back into the WP group thread (as the agent)
-        if (r?.status === 200 && r?.body?.status === 'completed') {
+        if (r?.status === 200 && r?.body?.status === 'completed' && body.writeBack !== false) {
           postRunnerResultToGroup(config, auth.runner, body).catch(() => {});
         }
         return r;

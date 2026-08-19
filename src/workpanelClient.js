@@ -276,3 +276,45 @@ export async function postAsAgent(server, { groupId, agentName, content, timeout
   });
   return { ok: res.ok, status: res.status, body: res.json };
 }
+
+/**
+ * Unwrap WP agent JSON parts (`{"v":1,"parts":[{"channel":"final","text":"..."}]}`) or return raw.
+ */
+export function extractWpMessageText(content) {
+  if (content == null) return '';
+  if (typeof content !== 'string') return JSON.stringify(content);
+  try {
+    const j = JSON.parse(content);
+    if (j && Array.isArray(j.parts)) {
+      const finals = j.parts.filter((p) => p.channel === 'final' && p.text).map((p) => p.text);
+      if (finals.length) return finals.join('\n');
+      const texts = j.parts.map((p) => p.text).filter(Boolean);
+      if (texts.length) return texts.join('\n');
+    }
+  } catch {
+    /* plain text */
+  }
+  return content;
+}
+
+const LATEST_BEFORE_TS = 9999999999999;
+const LATEST_BEFORE_ID = 'ffffffff-ffff-ffff-ffff-ffffffffffff';
+
+/** Latest page of group messages. WP requires beforeCreatedAt+beforeId (docs/WP-E2-COLLAB.md). */
+export async function wpListGroupMessages(server, groupId, { limit = 30, timeoutMs = 10000 } = {}) {
+  const token = await wpLogin(server, { timeoutMs });
+  const q = new URLSearchParams({
+    beforeCreatedAt: String(LATEST_BEFORE_TS),
+    beforeId: LATEST_BEFORE_ID,
+    limit: String(Math.min(Math.max(Number(limit) || 30, 1), 100)),
+  });
+  const res = await fetchJson(`${baseOf(server)}/api/groups/${groupId}/messages?${q}`, {
+    token,
+    timeoutMs,
+  });
+  if (!res.ok) {
+    return { ok: false, status: res.status, error: res.json?.error || `HTTP ${res.status}`, messages: [] };
+  }
+  const messages = res.json?.messages || [];
+  return { ok: true, status: res.status, messages };
+}

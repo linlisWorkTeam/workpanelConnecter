@@ -169,8 +169,8 @@ Rate limit（pet）：默认 60 req/min/pet → **429**。
 
 ## 5. E1 Runner API（dsh 出站注册表）
 
-> 状态：**E1 已代码落地**（`src/relay/runners.js` + `/v1/agents/*` + 门禁 `npm run test:runner`）；设计见 `docs/bridge-deepseek-harness.md` §4.4。
-> 与 pet 的 `/v1/*` 契约并存；Runner 使用独立 token（预配于 `config.runners`）。
+> 状态：**E1 骨架 + E2 可插拔/串行/TTL/两段下行**（`src/relay/runners.js` + `scripts/wp-runner.js` + `npm run test:runner` / `npm run test:e2-canary`）。
+> Runner **不**绑定 dsh；dsh 只是未来一种实现。
 
 | 方法 | 路径 | 鉴权 | 用途 |
 |------|------|------|------|

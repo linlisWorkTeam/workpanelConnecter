@@ -1,19 +1,37 @@
 /**
- * E1: DeepSeek Harness (dsh) runner registry + outbound task queue.
+ * E1/E2: pluggable outbound runner registry + task queue.
  *
- * Design (see docs/bridge-deepseek-harness.md §4.4):
- * - runners         : dsh instance identities (agentType='dsh'), token auth, channel, heartbeat
- * - runner_bindings : which (group, agent) is handled by which dsh runner
- *                     * role='special' -> WorkPanel self-maintenance group ONLY (at most one, root-designated)
- *                     * role='general'  -> any normal group chat, one @DeepSeek per group
- * - runner_tasks    : outbound queue. dsh is a resident runner that PULLS tasks from Connecter
- *                     (NAT-friendly: no inbound port, no SSH tunnel). ACP is the on-runner exec protocol.
+ * Runners are NOT bound to DeepSeek. Any process that speaks /v1/agents/*
+ * (wp-runner, future dsh, other agents) can plug in. Pull is NAT-friendly.
  */
 import { randomUUID } from 'node:crypto';
 import { db, writeTx, getMessageById, updateMessageStatus, upsertRun, insertMessageOrGet } from './db.js';
 import { hashToken } from './registry.js';
 import { makeEnvelope } from './messaging.js';
 import { postAsAgent } from '../workpanelClient.js';
+
+export function runnerHeartbeatTtlSec(config) {
+  const n = Number(config?.runnerHeartbeatTtlSec);
+  return Number.isFinite(n) && n > 0 ? n : 60;
+}
+
+export function defaultBindingAgentName(g, config) {
+  return g?.agentName || config?.defaults?.coordinatorAgentName || 'Runner';
+}
+
+export function resolveRunnerAgentType(provisioned, body) {
+  return body?.agentType || provisioned?.agentType || 'runner';
+}
+
+/** last_seen_at from SQLite datetime('now') (UTC, space-separated). */
+export function isRunnerHeartbeatFresh(row, ttlSec = 60) {
+  const last = row?.last_seen_at;
+  if (!last) return false;
+  const age = db()
+    .prepare(`SELECT CAST(strftime('%s','now') - strftime('%s', ?) AS INTEGER) AS age`)
+    .get(last);
+  return Number(age?.age) >= 0 && Number(age.age) <= ttlSec;
+}
 
 function upsertBinding(database, { runnerId, role, channelId, env, groupId, groupName, agentName }) {
   const id = `${runnerId}:${env}:${groupId}:${agentName}`;
@@ -45,22 +63,22 @@ export function syncConfigRunners(config) {
       database
         .prepare(
           `INSERT INTO runners (id, agent_type, role, channel_id, token_hash, status, runtime, last_seen_at)
-           VALUES (?, 'dsh', ?, ?, ?, 'active', ?, datetime('now'))
+           VALUES (?, ?, ?, ?, ?, 'active', ?, NULL)
            ON CONFLICT(id) DO UPDATE SET
+             agent_type = excluded.agent_type,
              role = excluded.role,
              channel_id = excluded.channel_id,
              status = 'active',
-             runtime = excluded.runtime,
-             last_seen_at = datetime('now')`
+             runtime = excluded.runtime`
         )
-        .run(r.agentId, role, channelId, hashToken(r.token), r.runtime || 'local');
+        .run(r.agentId, resolveRunnerAgentType(r), role, channelId, hashToken(r.token), r.runtime || 'local');
 
       const bindings = r.bindings || [];
       for (const b of bindings) {
         const env = b.env || config.defaults?.env || 'canary';
         const groupId = b.groupId || b.group || b.id;
         const groupName = b.groupName || b.name || groupId;
-        const agentName = b.agentName || 'DeepSeek';
+        const agentName = defaultBindingAgentName(b, config);
         if (!groupId) throw new Error(`runner ${r.agentId} binding missing groupId`);
         upsertBinding(database, { runnerId: r.agentId, role, channelId, env, groupId, groupName, agentName });
         out.push({ runnerId: r.agentId, env, groupId, agentName });
@@ -81,17 +99,17 @@ export function touchRunner(runnerId) {
     .run(runnerId);
 }
 
-/** Look up the dsh binding that currently owns a (group, agent) in an env. */
+/** Look up the runner binding that owns a (group, agent) in an env (may be stale heartbeat). */
 export function findRunnerBinding(instance) {
   if (!instance) return null;
   return (
     db()
       .prepare(
-        `SELECT b.*, r.role AS runner_role, r.status AS runner_status
+        `SELECT b.*, r.role AS runner_role, r.status AS runner_status, r.last_seen_at
          FROM runner_bindings b
          JOIN runners r ON r.id = b.runner_id
          WHERE b.env = ? AND b.group_id = ? AND b.agent_name = ?
-           AND b.status = 'active' AND r.status = 'active'`
+           AND b.status = 'active' AND r.status != 'disabled'`
       )
       .get(instance.env, instance.group_id, instance.agent_name) || null
   );
@@ -122,15 +140,16 @@ export function registerRunner(config, body) {
     database
       .prepare(
         `INSERT INTO runners (id, agent_type, role, channel_id, token_hash, status, runtime, last_seen_at)
-         VALUES (?, 'dsh', ?, ?, ?, 'active', ?, datetime('now'))
+         VALUES (?, ?, ?, ?, ?, 'active', ?, datetime('now'))
          ON CONFLICT(id) DO UPDATE SET
+           agent_type = excluded.agent_type,
            role = excluded.role,
            channel_id = excluded.channel_id,
            status = 'active',
            runtime = excluded.runtime,
            last_seen_at = datetime('now')`
       )
-      .run(agentId, role, channelId, hashToken(token), runtime);
+      .run(agentId, resolveRunnerAgentType(provisioned, body), role, channelId, hashToken(token), runtime);
 
     const groups = Array.isArray(body.groups) && body.groups.length
       ? body.groups
@@ -139,7 +158,7 @@ export function registerRunner(config, body) {
       const env = g.env || config.defaults?.env || 'canary';
       const groupId = g.groupId || g.group || g.id;
       const groupName = g.groupName || g.name || groupId;
-      const agentName = g.agentName || 'DeepSeek';
+      const agentName = defaultBindingAgentName(g, config);
       if (!groupId) {
         return { status: 400, body: { error: 'group requires groupId' } };
       }
@@ -149,7 +168,7 @@ export function registerRunner(config, body) {
         if (String(err.message || err).includes('UNIQUE')) {
           return {
             status: 409,
-            body: { error: `binding conflict: only one dsh per (group, role) — ${groupId}/${agentName}` },
+            body: { error: `binding conflict: only one runner per (group, role) — ${groupId}/${agentName}` },
           };
         }
         throw err;
@@ -168,7 +187,7 @@ export function registerRunner(config, body) {
   });
 }
 
-/** Persist an outbound task for a runner (called when a chat target is dsh-bound). */
+/** Persist an outbound task for a runner (chat target is runner-bound). */
 export function enqueueRunnerTask({
   runnerId,
   channelId,
@@ -203,17 +222,25 @@ export function enqueueRunnerTask({
   });
 }
 
-/** Runner pulls queued tasks over its outbound channel (marks them dispatched). */
-export function pollRunnerTasks(runner, { limit = 10 } = {}) {
-  const lim = Math.min(Math.max(Number(limit) || 10, 1), 50);
+/** Runner pulls queued tasks (at most one in-flight dispatched per runner). */
+export function pollRunnerTasks(runner, { limit = 1 } = {}) {
+  const lim = Math.min(Math.max(Number(limit) || 1, 1), 50);
   return writeTx((database) => {
+    const inflight = database
+      .prepare(
+        `SELECT id FROM runner_tasks WHERE runner_id = ? AND status = 'dispatched' LIMIT 1`
+      )
+      .get(runner.id);
+    if (inflight) {
+      return { status: 200, body: { tasks: [] } };
+    }
     const rows = database
       .prepare(
         `SELECT * FROM runner_tasks
-         WHERE channel_id = ? AND status = 'queued'
+         WHERE runner_id = ? AND status = 'queued'
          ORDER BY created_at ASC LIMIT ?`
       )
-      .all(runner.channel_id, lim);
+      .all(runner.id, lim);
     for (const row of rows) {
       database
         .prepare(
@@ -222,15 +249,20 @@ export function pollRunnerTasks(runner, { limit = 10 } = {}) {
         )
         .run(row.id);
     }
-    return rows.map((r) => ({
-      taskId: r.id,
-      prompt: r.prompt,
-      context: r.context_json ? JSON.parse(r.context_json) : null,
-      env: r.env,
-      groupId: r.group_id,
-      agentName: r.agent_name,
-      upMessageId: r.up_message_id,
-    }));
+    return {
+      status: 200,
+      body: {
+        tasks: rows.map((r) => ({
+          taskId: r.id,
+          prompt: r.prompt,
+          context: r.context_json ? JSON.parse(r.context_json) : null,
+          env: r.env,
+          groupId: r.group_id,
+          agentName: r.agent_name,
+          upMessageId: r.up_message_id,
+        })),
+      },
+    };
   });
 }
 
@@ -240,32 +272,50 @@ export function heartbeatRunner(runner) {
 }
 
 /**
- * Runner submits a result. If the task came from a pet chat (up_message_id),
- * echo a down message for the pet poll (N2) and mark the up message delivered.
- * Full "write back to WorkPanel group thread" is E2.
+ * Runner submits a result.
+ * status=running|accepted → down message only, task stays dispatched (two-phase).
+ * completed|failed|cancelled → terminal; marks up delivered.
  */
 export function submitRunnerTaskResult(config, runner, body) {
   const taskId = String(body.taskId || '').trim();
-  const status = body.status === 'failed' || body.status === 'cancelled' ? body.status : 'completed';
   if (!taskId) {
     return Promise.resolve({ status: 400, body: { error: 'taskId required' } });
   }
+  const raw = String(body.status || 'completed');
+  const isPartial = raw === 'running' || raw === 'accepted';
+  const status = isPartial
+    ? 'dispatched'
+    : raw === 'failed' || raw === 'cancelled'
+      ? raw
+      : 'completed';
   return writeTx((database) => {
     const task = database.prepare('SELECT * FROM runner_tasks WHERE id = ?').get(taskId);
     if (!task) return { status: 404, body: { error: 'task not found' } };
     if (task.runner_id !== runner.id) {
       return { status: 403, body: { error: 'task not owned by this runner' } };
     }
-    database
-      .prepare(
-        `UPDATE runner_tasks SET status = ?, result_json = ?, completed_at = datetime('now') WHERE id = ?`
-      )
-      .run(status, body.content != null ? JSON.stringify({ content: body.content }) : null, taskId);
+    if (!isPartial && (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled')) {
+      return { status: 409, body: { error: 'task already terminal', taskId, status: task.status } };
+    }
 
+    const resultJson = body.content != null ? JSON.stringify({ content: body.content, phase: raw }) : null;
+    if (isPartial) {
+      database
+        .prepare(`UPDATE runner_tasks SET result_json = ? WHERE id = ?`)
+        .run(resultJson, taskId);
+    } else {
+      database
+        .prepare(
+          `UPDATE runner_tasks SET status = ?, result_json = ?, completed_at = datetime('now') WHERE id = ?`
+        )
+        .run(status, resultJson, taskId);
+    }
+
+    const reportStatus = isPartial ? raw : status;
     if (task.up_message_id) {
       const up = getMessageById(database, task.up_message_id);
       if (up) {
-        updateMessageStatus(database, up.id, 'delivered', null);
+        if (!isPartial) updateMessageStatus(database, up.id, 'delivered', null);
         const upEnv = JSON.parse(up.envelope_json);
         const down = makeEnvelope({
           id: `msg_${randomUUID()}`,
@@ -276,15 +326,15 @@ export function submitRunnerTaskResult(config, runner, body) {
           content:
             body.content != null
               ? String(body.content)
-              : JSON.stringify({ type: 'run.result', taskId, status }),
-          ack: status === 'completed' ? 'delivered' : status,
+              : JSON.stringify({ type: 'run.result', taskId, status: reportStatus }),
+          ack: reportStatus === 'completed' ? 'delivered' : reportStatus,
         });
         insertMessageOrGet(database, {
           id: down.id,
           agent_instance_id: up.agent_instance_id,
           direction: 'down',
           envelope_json: JSON.stringify(down),
-          status: status === 'completed' ? 'delivered' : 'failed',
+          status: reportStatus === 'failed' || reportStatus === 'cancelled' ? 'failed' : 'delivered',
           retries: 0,
         });
       }
@@ -296,10 +346,10 @@ export function submitRunnerTaskResult(config, runner, body) {
       agent_instance_id: task.up_message_id
         ? getMessageById(database, task.up_message_id)?.agent_instance_id || null
         : null,
-      status,
-      detail_json: body.content != null ? JSON.stringify({ content: body.content }) : null,
+      status: reportStatus,
+      detail_json: resultJson,
     });
-    return { status: 200, body: { ok: true, taskId, status } };
+    return { status: 200, body: { ok: true, taskId, status: reportStatus } };
   });
 }
 
@@ -346,7 +396,7 @@ export async function postRunnerResultToGroup(config, runner, body) {
       baseUrl: backend.baseUrl,
       auth: backend.auth || {},
     },
-    { groupId: task.group_id, agentName: task.agent_name || 'DeepSeek', content }
+    { groupId: task.group_id, agentName: task.agent_name || 'Runner', content }
   );
   if (!result.ok) {
     console.warn(`[runner] group write-back failed for ${task.id}: ${result.status} ${result.error || ''}`);
