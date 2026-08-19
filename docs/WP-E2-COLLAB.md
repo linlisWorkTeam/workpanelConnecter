@@ -37,6 +37,20 @@ Connecter E2 轮询策略：派发后记下 `runIds[0]`，扫最新一页消息�
 - 不必让 Connecter 直连工作 Agent  
 - 不要为这次验收改 prod `:8080`
 
-## 联系
+## Pet = 用户（Connecter + WP 已对齐代码；canary 需发布 WP）
 
-实现方：Connecter **cs**。规格：`docs/superpowers/specs/2026-08-19-e2-pluggable-runner-design.md`。
+产品规则：Pet 输入 = 用户在群里说话；Pet 在线 = 该 WP 用户在线。**不用** `kind=pet` 新枚举（`kind=user` + `authUserId` 即等价）。
+
+Connecter（本仓）：
+
+- `pets[].wpAuth` 登录该 WP 用户；`POST /api/messages` 的 `senderMemberId` = 其绑定成员（不再优先群 owner）
+- 每次 members/chat 调 `POST /api/presence/heartbeat`（WP 未部署时 404 则跳过）
+- 无 `wpAuth` 时仍用门面 `backends.*.auth`；灰度群 owner「我」若 `authUserId` 为空则 **回退 owner**（现状）
+
+WP（`/AI/LinlisWorkPanel`，**未发 canary**）：
+
+- `POST /api/presence/heartbeat`：把当前登录用户写入 presence，TTL 90s
+- `GET /api/presence` 合并 WebSocket + HTTP TTL
+- 不新增 `kind=pet`；请把真人成员的 `auth_user_id` 绑上（灰度 owner「我」目前为 null，root 代发仍显示「我」且 WP UI 可能显示离线）
+
+实现方：Connecter **cs** + WP 仓同一改动。规格：G12 / `docs/superpowers/specs/2026-08-19-workpet-group-console-design.md` §8。

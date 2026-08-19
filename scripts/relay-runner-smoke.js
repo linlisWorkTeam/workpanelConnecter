@@ -14,6 +14,7 @@
 import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
+import http from 'node:http';
 import { randomUUID } from 'node:crypto';
 import { ROOT } from '../src/config.js';
 import { listenRelay, closeDb } from '../src/relay/server.js';
@@ -28,6 +29,49 @@ async function jsonFetch(url, opts = {}) {
   return { status: res.status, body };
 }
 
+function startMockWp(port, groupId) {
+  const group = {
+    id: groupId,
+    name: '灰度测试',
+    adminMemberId: 'ag-deepseek',
+    ownerMemberId: 'user-1',
+  };
+  const members = [
+    { id: 'user-1', kind: 'user', displayName: 'root', isActive: true, authUserId: 'u-root' },
+    { id: 'ag-deepseek', kind: 'agent', displayName: 'DeepSeek', isActive: true },
+  ];
+  const server = http.createServer((req, res) => {
+    const u = new URL(req.url, 'http://127.0.0.1');
+    const chunks = [];
+    req.on('data', (c) => chunks.push(c));
+    req.on('end', () => {
+      const send = (code, obj) => {
+        res.writeHead(code, { 'content-type': 'application/json' });
+        res.end(JSON.stringify(obj));
+      };
+      if (u.pathname === '/api/health') return send(200, { ok: true });
+      if (u.pathname === '/api/auth/login' && req.method === 'POST') {
+        return send(200, { token: 'mock-wp', user_id: 'u-root', username: 'root', isAdmin: true });
+      }
+      if (u.pathname === '/api/presence' && req.method === 'GET') {
+        return send(200, { onlineUserIds: ['u-root'] });
+      }
+      if (u.pathname === '/api/presence/heartbeat' && req.method === 'POST') {
+        return send(200, { ok: true, ttlMs: 90000, onlineUserIds: ['u-root'] });
+      }
+      if (u.pathname === '/api/groups' && req.method === 'GET') return send(200, [group]);
+      if (u.pathname === `/api/groups/${groupId}` && req.method === 'GET') {
+        return send(200, { group, members });
+      }
+      if (u.pathname === '/api/messages' && req.method === 'POST') {
+        return send(200, { message: { id: 'wp-msg-1' }, runIds: ['wp-run-1'] });
+      }
+      send(404, { error: 'nope' });
+    });
+  });
+  return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
+}
+
 async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'connecter-runner-'));
   const dbPath = path.join(tmp, 'connector.db');
@@ -38,6 +82,7 @@ async function main() {
   const RUNNER_TOKEN = 'dsh-gate-token';
   const SPECIAL_TOKEN = 'dsh-special-token';
   const GROUP_ID = 'grp-runner-test';
+  const mockWp = await startMockWp(19998, GROUP_ID);
 
   const config = {
     listen: { host: '127.0.0.1', port: PORT },
@@ -270,6 +315,7 @@ async function main() {
     );
   } finally {
     server.close();
+    mockWp.close();
     closeDb();
   }
 }

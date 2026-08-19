@@ -2,9 +2,8 @@
   "petName": "WorkPet",
   "connecterBaseUrl": "http://127.0.0.1:9080",
   "token": "dev-pet-token-change-me",
-  "env": "remote",
-  "group": "WorkPanelConnecter",
-  "agent": "cs",
+  "env": "canary",
+  "group": "灰度测试",
   "pollIntervalMs": 2000,
   "maxRunPolls": 30,
   "ui": {

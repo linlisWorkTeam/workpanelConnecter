@@ -31,26 +31,9 @@
   },
   "defaults": {
     "env": "canary",
-    "group": "灰度测试",
-    "coordinatorAgentName": "Cursor Agent"
+    "group": "灰度测试"
   },
-    "runners": [
-      {
-        "agentId": "wp-canary-runner-1",
-        "token": "dev-runner-token-change-me",
-        "agentType": "workpanel",
-        "role": "general",
-        "runtime": "local",
-        "bindings": [
-          {
-            "env": "canary",
-            "groupId": "528b36ba-4769-4b4d-9fa8-51e2de132396",
-            "groupName": "灰度测试",
-            "agentName": "Cursor Agent"
-          }
-        ]
-      }
-    ],
+  "runners": [],
   "pets": [
     {
       "id": "pet-dev-1",
@@ -60,14 +43,7 @@
         {
           "env": "canary",
           "groupId": "528b36ba-4769-4b4d-9fa8-51e2de132396",
-          "groupName": "灰度测试",
-          "agentName": "Cursor Agent"
-        },
-        {
-          "env": "canary",
-          "groupId": "smoke-chat-placeholder",
-          "groupName": "smoke-chat",
-          "agentName": "Cursor Agent"
+          "groupName": "灰度测试"
         }
       ]
     }

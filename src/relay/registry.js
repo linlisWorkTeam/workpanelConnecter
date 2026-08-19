@@ -33,8 +33,7 @@ export async function syncConfigPets(config) {
         const env = g.env || config.defaults?.env || 'canary';
         const groupId = g.groupId || g.group || g.id;
         const groupName = g.groupName || g.name || groupId;
-        const agentName =
-          g.agentName || config.defaults?.coordinatorAgentName || 'Cursor Agent';
+        const agentName = g.adminAgentName || g.agentName || '_pet';
         if (!groupId) throw new Error(`pet ${pet.id} group missing groupId`);
 
         const instanceId = `${pet.id}:${env}:${groupId}:${agentName}`;

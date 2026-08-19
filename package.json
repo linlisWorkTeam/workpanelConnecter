@@ -25,7 +25,9 @@
     "gate:runner": "node scripts/relay-runner-smoke.js",
     "wp-runner": "node scripts/wp-runner.js",
     "test:e2-canary": "node scripts/e2-canary-runner-gate.js",
-    "gate:e2-canary": "node scripts/e2-canary-runner-gate.js"
+    "gate:e2-canary": "node scripts/e2-canary-runner-gate.js",
+    "test:mentions": "node scripts/mention-unit.js",
+    "test:identity": "node scripts/identity-unit.js"
   },
   "engines": {
     "node": ">=18"

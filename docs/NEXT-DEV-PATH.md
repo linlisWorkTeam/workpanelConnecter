@@ -52,6 +52,7 @@
 | P2.1 | **WP → Connecter** 登记/回调 | 二期协议：WP 主动推送或 webhook；Connecter 写入 down messages | 设计评审 + 门禁 |
 | P2.2 | 跨实例路由硬化 | A 群 pet → B 环境 WP；审计日志 | E2E 双 backend |
 | P2.3 | 真实 Agent 全文回显 | 现 down 多为 delivery ack；需订阅 WP runs/消息 | 轮询可见回复摘要 |
+| P2.5 | Pet = WP 用户 + presence | `wpAuth` 代登录；WP HTTP heartbeat | Connecter 已写；**WP canary 未发** |
 
 ### P3 — Phase 5c：体验与扩展（可并行、可砍）
 

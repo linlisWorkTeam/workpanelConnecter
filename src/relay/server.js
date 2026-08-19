@@ -137,6 +137,14 @@ export function createRelayServer(options = {}) {
         return send(res, h.status, h.body);
       }
 
+      if (req.method === 'GET' && pathname === '/v1/members') {
+        const h = await handlers.members(auth, {
+          group: url.searchParams.get('group'),
+          env: url.searchParams.get('env'),
+        });
+        return send(res, h.status, h.body);
+      }
+
       if (req.method === 'GET' && pathname === '/v1/messages') {
         const h = handlers.messages(auth, {
           since: url.searchParams.get('since'),

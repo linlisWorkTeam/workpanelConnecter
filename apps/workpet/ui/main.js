@@ -28,7 +28,52 @@ let cursor = 0;
 let pollTimer = null;
 let bubbleTimer = null;
 let panelOpen = false;
-let sending = false;
+let membersCache = [];
+
+function hideMentions() {
+  const menu = $('mentionMenu');
+  menu.classList.add('is-hidden');
+  menu.hidden = true;
+  menu.innerHTML = '';
+}
+
+function showMentions(q) {
+  const menu = $('mentionMenu');
+  const agents = membersCache.filter((m) => m.kind === 'agent' && m.isActive !== false);
+  const needle = String(q || '').toLowerCase();
+  const hits = agents.filter((m) => String(m.displayName || '').toLowerCase().includes(needle));
+  if (!hits.length) {
+    hideMentions();
+    return;
+  }
+  menu.innerHTML = hits
+    .slice(0, 8)
+    .map(
+      (m, i) =>
+        `<li data-name="${String(m.displayName).replace(/"/g, '&quot;')}" class="${i === 0 ? 'active' : ''}">${m.displayName}<span class="kind">agent</span></li>`
+    )
+    .join('');
+  menu.classList.remove('is-hidden');
+  menu.hidden = false;
+}
+
+function applyMention(name) {
+  const cur = input.value;
+  const at = cur.lastIndexOf('@');
+  input.value = `${cur.slice(0, at + 1)}${name} `;
+  hideMentions();
+  input.focus();
+}
+
+async function loadMembers() {
+  if (!client) return;
+  try {
+    const row = await client.members();
+    membersCache = row.members || [];
+  } catch (_) {
+    membersCache = [];
+  }
+}
 let petScale = 1;
 const runPolls = {};
 
@@ -176,6 +221,7 @@ async function send() {
 
   sending = true;
   sendBtn.disabled = true;
+  hideMentions();
   setPetState('thinking');
   addMsg(text, 'mine', '发送中…');
   input.value = '';
@@ -244,6 +290,7 @@ async function expand() {
   }
   cursor = 0;
   clearInterval(pollTimer);
+  await loadMembers();
   pollTimer = setInterval(pollMessages, cfg.pollIntervalMs || 2000);
   input.focus();
 }
@@ -274,6 +321,7 @@ async function init() {
   setPetState('idle');
   applyConfig(config);
   await checkConnection();
+  await loadMembers();
 
   $('petHit').addEventListener('click', interact);
   $('openChatBtn').addEventListener('click', expand);
@@ -283,7 +331,23 @@ async function init() {
   $('sizeUpBtn').addEventListener('click', () => resizePet(1));
   $('composer').addEventListener('submit', (event) => {
     event.preventDefault();
+    hideMentions();
     send();
+  });
+  input.addEventListener('input', () => {
+    const cur = input.value;
+    const at = cur.lastIndexOf('@');
+    if (at < 0 || /\s/.test(cur.slice(at))) {
+      hideMentions();
+      return;
+    }
+    showMentions(cur.slice(at + 1));
+  });
+  $('mentionMenu').addEventListener('mousedown', (event) => {
+    const li = event.target.closest('li[data-name]');
+    if (!li) return;
+    event.preventDefault();
+    applyMention(li.dataset.name);
   });
   document.addEventListener('keydown', (event) => {
     if (!event.ctrlKey || panelOpen) return;

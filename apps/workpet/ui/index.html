@@ -53,7 +53,8 @@
       </div>
       <div id="msgList" class="msg-list" aria-live="polite"></div>
       <form id="composer" class="panel-foot">
-        <input id="input" class="input" type="text" placeholder="对 WorkPanel 说点什么…" autocomplete="off" />
+        <input id="input" class="input" type="text" placeholder="不 @ 则管理员回；@ 某人则指定谁干活" autocomplete="off" />
+        <ul id="mentionMenu" class="mention-menu is-hidden" hidden></ul>
         <button id="sendBtn" class="send-btn" type="submit" aria-label="发送消息">
           <span>发送</span><span aria-hidden="true">↗</span>
         </button>

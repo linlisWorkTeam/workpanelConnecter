@@ -146,11 +146,16 @@ Rate limit（pet）：默认 60 req/min/pet → **429**。
 "pets": [{
   "id": "pet-dev-1",
   "token": "<secret>",
+  "wpAuth": { "username": "<WP 登录名>", "password": "<WP 密码>" },
   "groups": [
-    { "env": "canary", "groupId": "<uuid>", "groupName": "灰度测试", "agentName": "Cursor Agent" }
+    { "env": "canary", "groupId": "<uuid>", "groupName": "灰度测试" }
   ]
 }]
 ```
+
+`wpAuth` = 该桌宠对应的 **WP 用户**（群里 `kind=user` 且 `authUserId` 已绑定）。省略时回落 `backends.*.auth` 门面账号。WorkPet **不**直连 WP，仍只用 pet token。
+
+`GET /v1/members`：`selfMemberId` + 成员 `self` / `online`（用户在线来自 WP `GET /api/presence`；Pet 心跳 `POST /api/presence/heartbeat`）。
 
 启动时 upsert `pets` / `agent_instances` / `sessions`。动态 `POST /v1/register` = 二期。
 

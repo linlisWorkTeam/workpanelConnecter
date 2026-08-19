@@ -1,11 +1,20 @@
 import { resolveBackend, listEnvs } from './router.js';
-import { dispatchWorkPanel } from '../workpanelClient.js';
+import {
+  dispatchWorkPanel,
+  wpGroupContext,
+  wpPresenceHeartbeat,
+  wpGetPresence,
+  wpSession,
+  pickSender,
+  serverForPet,
+} from '../workpanelClient.js';
 import {
   resolveAgentInstance,
   listAgentInstancesForPet,
   revokePetSessions,
 } from './registry.js';
 import { acceptUpMessage, pollMessages } from './messaging.js';
+import { extractMentionTarget, pickAdminAgent } from './mentions.js';
 import { deliverWithRetry } from './delivery.js';
 import { db, getRun, getMessageById } from './db.js';
 import {
@@ -75,7 +84,6 @@ export function createHandlers({ config }) {
         const instance = resolveAgentInstance(auth.petId, {
           env: body.env,
           group: body.group || body.groupId,
-          agent: body.agent || body.agentName,
         });
         if (!instance) {
           return { status: 400, body: { error: 'no matching agent_instance for pet' } };
@@ -87,11 +95,47 @@ export function createHandlers({ config }) {
           };
         }
 
+        const backend = config.backends?.[instance.env];
+        if (!backend) {
+          return { status: 400, body: { error: `unknown env ${instance.env}` } };
+        }
+        const wpServer = serverForPet(backend, config, auth.petId);
+        let groupState;
+        try {
+          groupState = await wpGroupContext(wpServer, {
+            id: instance.group_id,
+            name: instance.group_name,
+          });
+        } catch (err) {
+          return { status: 502, body: { error: String(err.message || err) } };
+        }
+        const { group: wpGroup, members } = groupState;
+        const mention = extractMentionTarget(prompt, members);
+        let target = null;
+        if (mention.hasAt) {
+          if (!mention.target || mention.target.kind !== 'agent') {
+            return {
+              status: 400,
+              body: { error: 'UNKNOWN_MENTION', code: 'UNKNOWN_MENTION', mention: mention.raw },
+            };
+          }
+          target = mention.target;
+        } else {
+          target = pickAdminAgent(wpGroup, members);
+          if (!target) {
+            return {
+              status: 400,
+              body: { error: 'NO_ADMIN', code: 'NO_ADMIN' },
+            };
+          }
+        }
+
         const accepted = await acceptUpMessage({
           messageId: body.id,
           agentInstance: instance,
           petId: auth.petId,
           content: String(prompt),
+          toAgentName: target.displayName,
         });
 
         // Idempotent replay
@@ -110,13 +154,18 @@ export function createHandlers({ config }) {
               seq: existing.seq,
               runIds: runs.map((r) => r.id),
               group: instance.group_id,
-              coordinatorAgent: instance.agent_name,
+              coordinatorAgent: target.displayName,
+              mentionedAgent: mention.hasAt ? target.displayName : null,
             },
           };
         }
 
           // E2: runner-bound target -> enqueue (must have fresh heartbeat)
-          const runnerBinding = findRunnerBinding(instance);
+          const runnerBinding = findRunnerBinding({
+            env: instance.env,
+            group_id: instance.group_id,
+            agent_name: target.displayName,
+          });
           if (runnerBinding) {
             if (!isRunnerHeartbeatFresh(runnerBinding, runnerHeartbeatTtlSec(config))) {
               return {
@@ -133,7 +182,7 @@ export function createHandlers({ config }) {
               env: instance.env,
               groupId: instance.group_id,
               groupName: instance.group_name,
-              agentName: instance.agent_name,
+              agentName: target.displayName,
               upMessage: accepted.message,
               content: String(prompt),
               context: { source: 'pet-chat' },
@@ -147,7 +196,8 @@ export function createHandlers({ config }) {
                 seq: accepted.message.seq,
                 runIds: [task.id],
                 group: instance.group_id,
-                coordinatorAgent: instance.agent_name,
+                coordinatorAgent: target.displayName,
+                mentionedAgent: target.displayName,
                 runner: { agentId: runnerBinding.runner_id, channelId: runnerBinding.channel_id },
               },
             };
@@ -165,7 +215,8 @@ export function createHandlers({ config }) {
               seq: accepted.message.seq,
               error: delivered.error,
               group: instance.group_id,
-              coordinatorAgent: instance.agent_name,
+              coordinatorAgent: target.displayName,
+              mentionedAgent: mention.hasAt ? target.displayName : null,
             },
           };
         }
@@ -180,7 +231,8 @@ export function createHandlers({ config }) {
             runIds: delivered.runIds || [],
             wpMessageId: delivered.wpMessageId,
             group: instance.group_id,
-            coordinatorAgent: instance.agent_name,
+            coordinatorAgent: target.displayName,
+            mentionedAgent: mention.hasAt ? target.displayName : null,
           },
         };
       }
@@ -236,6 +288,62 @@ export function createHandlers({ config }) {
           coordinatorAgent: result.body?.coordinatorAgent || agent,
         },
       };
+    },
+
+    async members(auth, { group, env }) {
+      if (auth.kind !== 'pet') {
+        return { status: 403, body: { error: 'pet token required' } };
+      }
+      const instance = resolveAgentInstance(auth.petId, { env, group });
+      if (!instance) {
+        return { status: 400, body: { error: 'no matching agent_instance for pet' } };
+      }
+      const backend = config.backends?.[instance.env];
+      if (!backend) return { status: 400, body: { error: `unknown env ${instance.env}` } };
+      const wpServer = serverForPet(backend, config, auth.petId);
+      try {
+        const { group: wpGroup, members } = await wpGroupContext(wpServer, {
+          id: instance.group_id,
+          name: instance.group_name,
+        });
+        let session = { userId: null };
+        try {
+          session = await wpSession(wpServer, { timeoutMs: 4000 });
+        } catch {
+          session = { userId: null };
+        }
+        await wpPresenceHeartbeat(wpServer, { timeoutMs: 3000 });
+        const onlineIds = await wpGetPresence(wpServer, { timeoutMs: 3000 });
+        const onlineSet = new Set(onlineIds);
+        const me = pickSender(wpGroup, members, { userId: session.userId });
+        const admin = pickAdminAgent(wpGroup, members);
+        return {
+          status: 200,
+          body: {
+            groupId: wpGroup.id,
+            groupName: wpGroup.name,
+            adminAgent: admin ? { id: admin.id, displayName: admin.displayName } : null,
+            selfMemberId: me?.id || null,
+            members: (members || []).map((m) => {
+              const self = me ? m.id === me.id : false;
+              const online =
+                m.kind === 'agent' || m.kind === 'chatbot'
+                  ? m.isActive !== false
+                  : onlineSet.has(m.authUserId) || self;
+              return {
+                id: m.id,
+                displayName: m.displayName,
+                kind: m.kind,
+                isActive: m.isActive !== false,
+                self,
+                online,
+              };
+            }),
+          },
+        };
+      } catch (err) {
+        return { status: 502, body: { error: String(err.message || err) } };
+      }
     },
 
     messages(auth, { since, group, env, agent, limit }) {
