@@ -1,0 +1,79 @@
+name: Windows release artifacts
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Existing or new v-prefixed release tag
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  windows-release:
+    runs-on: windows-2022
+    timeout-minutes: 45
+    steps:
+      - name: Check out tagged source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24.11.1'
+
+      - name: Set up Rust
+        shell: pwsh
+        run: |
+          rustup toolchain install stable --profile minimal
+          rustup default stable
+
+      - name: Resolve release version
+        id: version
+        shell: pwsh
+        run: |
+          $tag = if ('${{ github.event_name }}' -eq 'workflow_dispatch') { '${{ inputs.tag }}' } else { '${{ github.ref_name }}' }
+          if ($tag -notmatch '^v(?<version>\d+\.\d+\.\d+([-.][0-9A-Za-z.-]+)?)$') {
+            throw "Tag must be v-prefixed semantic version: $tag"
+          }
+          "tag=$tag" >> $env:GITHUB_OUTPUT
+          "version=$($Matches.version)" >> $env:GITHUB_OUTPUT
+
+      - name: Build and smoke-test Windows artifacts
+        shell: pwsh
+        run: ./scripts/build-windows-release.ps1 -Version '${{ steps.version.outputs.version }}'
+
+      - name: Create release when absent
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $tag = '${{ steps.version.outputs.tag }}'
+          gh release view $tag --repo '${{ github.repository }}' 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            $notes = "docs/releases/$tag.md"
+            if (Test-Path $notes) {
+              gh release create $tag --repo '${{ github.repository }}' --title "$tag Windows binaries" --notes-file $notes
+            } else {
+              gh release create $tag --repo '${{ github.repository }}' --title "$tag Windows binaries" --generate-notes
+            }
+          }
+
+      - name: Upload Windows artifacts
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release upload '${{ steps.version.outputs.tag }}' ./dist/release/windows/artifacts/* --clobber --repo '${{ github.repository }}'
+
+      - name: Preserve artifacts in Actions
+        uses: actions/upload-artifact@v4
+        with:
+          name: workpanel-connecter-windows-${{ steps.version.outputs.version }}
+          path: dist/release/windows/artifacts/*
+          if-no-files-found: error

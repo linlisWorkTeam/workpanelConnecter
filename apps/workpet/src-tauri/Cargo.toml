@@ -1,6 +1,6 @@
 [package]
 name = "workpet"
-version = "0.2.0"
+version = "0.2.2"
 description = "WorkPet Live2D 桌宠 — WorkPanel 桌面入口"
 edition = "2021"
 

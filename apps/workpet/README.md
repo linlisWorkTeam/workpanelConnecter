@@ -49,6 +49,14 @@ npm run dev                    # 开发运行（Vite + Tauri 透明窗口）
 npm run build                  # 构建桌面程序
 ```
 
+Windows release 构建会生成可双击安装的 NSIS 包：
+
+```text
+src-tauri/target/release/bundle/nsis/WorkPet_<version>_x64-setup.exe
+```
+
+仓库根目录执行 `npm run build:windows` 会同时构建 WorkPet 安装器、Connecter 自包含包及 `SHA256SUMS.txt`。tag 发布时 `.github/workflows/release-windows.yml` 会自动上传这些文件到 GitHub Release。
+
 前置依赖（按官方文档）：
 - Windows：VS Build Tools（含 WebView2 SDK）
 - macOS：Xcode Command Line Tools

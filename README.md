@@ -8,6 +8,16 @@ DeepSeek Harness 只是可接入的 Runner 实现之一，不是 Connecter 的�
 
 ## 启动方式
 
+### Windows 一键安装 / 运行
+
+从 [GitHub Releases](https://github.com/linlisWorkTeam/workpanelConnecter/releases) 下载：
+
+- `WorkPet_<version>_x64-setup.exe`：Windows 桌面端安装器，双击安装；
+- `WorkPanelConnecter_<version>_win-x64-portable.zip`：站点 Connecter 自包含包，无需另装 Node.js。解压后先复制并填写 `config/relay.json`，再运行 `WorkPanelConnecter.exe`；
+- `SHA256SUMS.txt`：下载完整性校验值。
+
+当前安装包尚未配置商业代码签名，Windows SmartScreen 可能显示“未知发布者”。构建、启动和健康检查均由 Windows 发布任务自动验证。
+
 ### 1. Connecter CLI（交互式命令行）
 
 ```bash
@@ -48,7 +58,8 @@ npm run test:canary     # 直连 WP 灰度 :8081
 npm run test:relay      # 中继网关门禁
 npm run test:runner     # 可插拔 runner 队列/串行/TTL（无 WP）
 npm run test:e2-canary  # E2 实调用 canary :8081 + wp-runner（无 mock）
-npm run test:release-local # P0–P3 全量本地发布门禁（49 项，fail-fast）
+npm run test:release-local # P0–P3 全量本地发布门禁（50 项，fail-fast）
+npm run build:windows      # Windows：生成 WorkPet NSIS + Connecter 自包含包
 ```
 
 可选：`npm run test:e2e-resume`（杀进程续投）、`npm run test:workpet`。
