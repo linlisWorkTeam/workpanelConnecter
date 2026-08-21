@@ -2,39 +2,26 @@
  * Site Connecter joins Connecter Host (outbound only).
  */
 import { hostRole } from './hostPeers.js';
+import { federationHostRequest } from './federationClient.js';
+import { flushFederationOutboxOnce, pullFederationInboxOnce, syncFederationDirectoryOnce } from './services/federationService.js';
+import { logEvent } from './structuredLogger.js';
 
 const state = {
   role: 'standalone',
   linked: false,
+  controlLinked: false,
   siteId: null,
   lastError: null,
   hostUrl: null,
+  federation: { linked: false, advertised: 0, imported: 0, sent: 0, pulled: 0, lastError: null },
 };
 
 let timer = null;
 let stopped = false;
+let ticking = false;
 
 export function hostJoinState() {
   return { ...state };
-}
-
-async function jsonFetch(url, { method = 'POST', token, body, timeoutMs = 8000 } = {}) {
-  const ctrl = new AbortController();
-  const timerId = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    const headers = { accept: 'application/json', 'content-type': 'application/json' };
-    if (token) headers.authorization = `Bearer ${token}`;
-    const res = await fetch(url, {
-      method,
-      headers,
-      body: body === undefined ? undefined : JSON.stringify(body),
-      signal: ctrl.signal,
-    });
-    const json = await res.json().catch(() => ({}));
-    return { status: res.status, body: json };
-  } finally {
-    clearTimeout(timerId);
-  }
 }
 
 export async function joinHostOnce(config) {
@@ -45,7 +32,7 @@ export async function joinHostOnce(config) {
   if (!base || !siteId || !token) {
     throw new Error('host.baseUrl, host.siteId, host.token required');
   }
-  let reg = await jsonFetch(`${base}/v1/host/peers/register`, {
+  await federationHostRequest(config, '/v1/host/peers/register', {
     body: {
       siteId,
       token,
@@ -53,20 +40,31 @@ export async function joinHostOnce(config) {
       publicBaseUrl: config.publicBaseUrl || null,
     },
   });
-  if (reg.status !== 200) {
-    throw new Error(`host register HTTP ${reg.status} ${JSON.stringify(reg.body)}`);
-  }
-  const beat = await jsonFetch(`${base}/v1/host/peers/heartbeat`, {
-    token,
+  await federationHostRequest(config, '/v1/host/peers/heartbeat', {
     body: {},
   });
-  if (beat.status !== 200) {
-    throw new Error(`host heartbeat HTTP ${beat.status} ${JSON.stringify(beat.body)}`);
-  }
+  state.controlLinked = true;
   state.linked = true;
   state.lastError = null;
   state.siteId = siteId;
   state.hostUrl = base;
+  try {
+    if (config?.federation?.enabled === false) {
+      state.federation = { linked: false, advertised: 0, imported: 0, sent: 0, pulled: 0, lastError: null, enabled: false };
+      return { ok: true, siteId };
+    }
+    const directory = await syncFederationDirectoryOnce(config);
+    const outbound = await flushFederationOutboxOnce(config);
+    const inbound = await pullFederationInboxOnce(config, { limit: 50, waitMs: 0 });
+    const afterInbound = await flushFederationOutboxOnce(config);
+    state.federation = {
+      linked: true,
+      advertised: directory.advertised, imported: directory.imported,
+      sent: outbound.sent + afterInbound.sent, pulled: inbound.pulled, lastError: null,
+    };
+  } catch (error) {
+    state.federation = { ...state.federation, linked: false, lastError: String(error.message || error) };
+  }
   return { ok: true, siteId };
 }
 
@@ -79,20 +77,27 @@ export function startHostJoin(config) {
   state.hostUrl = config?.host?.baseUrl ? String(config.host.baseUrl).replace(/\/+$/, '') : null;
   if (role !== 'connecter') {
     state.linked = role === 'host';
+    state.controlLinked = role === 'host';
+    state.federation = { ...state.federation, linked: role === 'host', lastError: null };
     state.lastError = null;
     return { stop: stopHostJoin };
   }
   const intervalMs = Number(config?.host?.heartbeatMs) > 0 ? Number(config.host.heartbeatMs) : 15000;
   const tick = async () => {
-    if (stopped) return;
+    if (stopped || ticking) return;
+    ticking = true;
     try {
       const was = state.linked;
       await joinHostOnce(config);
-      if (!was) console.log(`[host-join] linked site=${state.siteId} host=${state.hostUrl}`);
+      if (!was) logEvent('info', 'host.control_linked', { siteId: state.siteId, hostUrl: state.hostUrl });
     } catch (err) {
       state.linked = false;
+      state.controlLinked = false;
+      state.federation = { ...state.federation, linked: false };
       state.lastError = String(err.message || err);
-      console.error(`[host-join] ${state.lastError}`);
+      logEvent('error', 'host.control_link_failed', { siteId: state.siteId, hostUrl: state.hostUrl, error: state.lastError });
+    } finally {
+      ticking = false;
     }
   };
   tick();
@@ -103,6 +108,7 @@ export function startHostJoin(config) {
 
 export function stopHostJoin() {
   stopped = true;
+  ticking = false;
   if (timer) {
     clearInterval(timer);
     timer = null;

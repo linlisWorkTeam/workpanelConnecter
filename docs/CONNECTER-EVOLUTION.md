@@ -1,7 +1,7 @@
 # Connecter 后续演进方向（管理员答复）
 
-> 日期：2026-08-10 · 角色：cs（Connecter 侧）  
-> 背景：云主机内存仅够约 **2 个 Agent session**；希望参考 Raft「节点可分散部署」、本机跑 Agent；WorkPet/Connecter 现状是 **Team↔Team 中继**，尚未做 **Team 内跨机 Agent 直达**。  
+> 日期：2026-08-10 · 角色：cs（Connecter 侧）
+> 背景：云主机内存仅够约 **2 个 Agent session**；希望参考 Raft「节点可分散部署」、本机跑 Agent；WorkPet/Connecter 现状是 **Team↔Team 中继**，尚未做 **Team 内跨机 Agent 直达**。
 > 关联：`docs/workconnector-system-design.md` · `docs/NEXT-DEV-PATH.md` · `docs/bridge-deepseek-harness.md`
 > 定位：**Connecter** = 每站点一台，接下辖 WorkPet、对本站 WorkPanel 投递。**Connecter Host** = 全网一台，只会合各 Connecter（不接桌宠、不直连 WP）。单站可合署为同一进程。DeepSeek Harness（dsh）只是 **一种** 未来 Runner。命名规格：`docs/superpowers/specs/2026-08-19-connecter-host-naming-design.md`。E2 插件：`docs/superpowers/specs/2026-08-19-e2-pluggable-runner-design.md`。
 
@@ -55,7 +55,7 @@ WorkPet B ──绑定──► Connecter B ──► 本站 WorkPanel B
 | **多数派提交** | 中继 HA 阶段再谈 | E4：成员表/配置共识可用 Raft/etcd |
 | **单 Leader 写串行** | 同 `agentId` 任务串行，防双执行 | Connecter 侧按 agent 队列（逻辑串行，物理分散） |
 
-**设计口号（给排期用）**：  
+**设计口号（给排期用）**：
 *Membership & health like Raft；execution anywhere；conversation source-of-truth stays WorkPanel.*
 
 ## 4. 分阶段路线（建议拍板）
@@ -64,32 +64,32 @@ WorkPet B ──绑定──► Connecter B ──► 本站 WorkPanel B
 
 **产出**
 
-- 协议：`POST /v1/agents/register` · `POST /v1/agents/heartbeat` · `GET /v1/agents?group=`  
-- 表：扩展现有 `agent_instances`（增加 `endpoint`、`runtime=cloud|local|remote`、`last_seen`）  
-- Runner 最小规范：本机/旁路机跑 cursor-agent 等，只暴露「收任务 / 回状态」HTTP（或复用 WP runner 适配器）  
-- 云 WP：**限制并发 session**（配置级硬顶 2），溢出任务经 Connecter 改派到已注册 Runner  
+- 协议：`POST /v1/agents/register` · `POST /v1/agents/heartbeat` · `GET /v1/agents?group=`
+- 表：扩展现有 `agent_instances`（增加 `endpoint`、`runtime=cloud|local|remote`、`last_seen`）
+- Runner 最小规范：本机/旁路机跑 cursor-agent 等，只暴露「收任务 / 回状态」HTTP（或复用 WP runner 适配器）
+- 云 WP：**限制并发 session**（配置级硬顶 2），溢出任务经 Connecter 改派到已注册 Runner
 
 **验收**：同群 1 个云 Agent + 1 个本机 Runner；云内存不随「想法变多」线性涨。
 
 ### 阶段 E2 — Team 内跨机通信打通 — **✅ 可插拔 Runner + canary 实调用（2026-08-19）**
 
-- 上行：WorkPet / WP → Connecter → **已注册 Runner 队列**（不再一律进云 session）  
-- 下行：`tasks/result` → **`/v1/messages` 全文**（P2.3）；WP 群回写 best-effort  
-- 策略：同 agent 串行 + 心跳 TTL；离线 runner 不入队  
-- **执行端可插拔**：本期第一插件 = **canary WP 实调用适配器**（禁止 echo mock 验收）；任意 Agent 只要走 `/v1/agents/*` 即可顶替；**不**在 Connecter 实现完整 ACP  
+- 上行：WorkPet / WP → Connecter → **已注册 Runner 队列**（不再一律进云 session）
+- 下行：`tasks/result` → **`/v1/messages` 全文**（P2.3）；WP 群回写 best-effort
+- 策略：同 agent 串行 + 心跳 TTL；离线 runner 不入队
+- **执行端可插拔**：本期第一插件 = **canary WP 实调用适配器**（禁止 echo mock 验收）；任意 Agent 只要走 `/v1/agents/*` 即可顶替；**不**在 Connecter 实现完整 ACP
 - 规格：`docs/superpowers/specs/2026-08-19-e2-pluggable-runner-design.md`
 
 ### 阶段 E3 — Team↔Team 强化（现有能力加深）
 
 - **Connecter A → Connecter Host → Connecter B**（联邦；Host 不接桌宠）
-- WP→Connecter 回调、跨 env 审计（原 P2）  
+- WP→Connecter 回调、跨 env 审计（原 P2）
 - 协调门面从「群 admin Agent」演进为 **非 AI 协调算法**（原架构债）
 - （未做，**不影响 Runner 适配**）进程内按 `translatorLinks` 加载跨 WP 翻译器
 
 ### 阶段 E4 — Host HA + dsh 自举（远期）
 
-- **Connecter Host** 双机 + 成员表共识（可选 Raft/etcd）；消息仍 SQLite/外置队列  
-- **dsh 作为一种 Runner** 接入同一 pull API，挂在各站 **Connecter** 上  
+- **Connecter Host** 双机 + 成员表共识（可选 Raft/etcd）；消息仍 SQLite/外置队列
+- **dsh 作为一种 Runner** 接入同一 pull API，挂在各站 **Connecter** 上
 - 仅当 Host 可用性成为瓶颈、或要上真实 Harness 时立项
 
 ## 5. 与现状 / NEXT 的衔接
@@ -105,9 +105,9 @@ WorkPet B ──绑定──► Connecter B ──► 本站 WorkPanel B
 
 ## 6. 明确非目标（防跑偏）
 
-- Connecter **不**内嵌再跑 cursor-agent 来「省 WP」——会把 OOM 挪到中继机  
-- **不**第一期上完整 Raft 库「为用而用」  
-- **不**替代 WorkPanel 群聊产品；只解决 **谁在哪台机器执行**  
+- Connecter **不**内嵌再跑 cursor-agent 来「省 WP」——会把 OOM 挪到中继机
+- **不**第一期上完整 Raft 库「为用而用」
+- **不**替代 WorkPanel 群聊产品；只解决 **谁在哪台机器执行**
 - **不**默认打开 prod；本机 Runner 默认只挂 canary 群
 
 ## 7. 风险
@@ -124,3 +124,6 @@ WorkPet B ──绑定──► Connecter B ──► 本站 WorkPanel B
 > Connecter 下一步不是在小服务器上塞更多 Agent，而是做成 **跨机 Agent 注册与路由中枢**（理念对齐 Raft 的成员/心跳/故障发现，而非一上来复制 Raft 日志）。云 WP 只保留薄协调与少量 session；重 Agent 注册到本机/旁路机执行。完整 Raft 共识留到中继要 HA 时再上。
 
 排期已按 **E1（骨架已落地）→ E2（当前设计）→ E3 → E4** 执行。E2 不拉 dsh、不做完整 ACP。
+
+P0–P3 的可执行拆分、数据模型、API、测试门禁与上线/回滚条件见：
+[`docs/superpowers/plans/2026-08-21-connecter-p0-p3-evolution.md`](./superpowers/plans/2026-08-21-connecter-p0-p3-evolution.md)。

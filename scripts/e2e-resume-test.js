@@ -17,6 +17,7 @@ import { fileURLToPath } from 'node:url';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
 const PORT = 9199; // 专用测试端口（9191 被其他项目 python3 服务占用）
+const WP_PORT = 18081;
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'workpet-e2e-'));
 const dbPath = path.join(tmp, 'connector.db');
 const cfgPath = path.join(tmp, 'relay.json');
@@ -33,7 +34,7 @@ const config = {
   rateLimitPerMin: 60,
   backends: {
     canary: {
-      baseUrl: 'http://127.0.0.1:8081',
+      baseUrl: `http://127.0.0.1:${WP_PORT}`,
       kind: 'workpanel',
       auth: { username: 'root', password: 'root' },
     },
@@ -65,6 +66,20 @@ function startRelay() {
   return child;
 }
 
+function startMockWp() {
+  return spawn('node', ['mock/workpanel-server.js'], {
+    cwd: root,
+    env: {
+      ...process.env,
+      PORT: String(WP_PORT),
+      GATE_GROUP_ID: GROUP_ID,
+      GATE_GROUP_NAME: '灰度测试',
+      COORDINATOR_NAME: 'Cursor Agent',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+}
+
 async function waitHealth(child, timeoutMs = 15000) {
   const t0 = Date.now();
   while (Date.now() - t0 < timeoutMs) {
@@ -76,6 +91,21 @@ async function waitHealth(child, timeoutMs = 15000) {
     await new Promise((r) => setTimeout(r, 300));
   }
   throw new Error('relay health timeout');
+}
+
+async function waitMockHealth(child, timeoutMs = 15000) {
+  const t0 = Date.now();
+  while (Date.now() - t0 < timeoutMs) {
+    if (child.exitCode !== null) throw new Error('mock WP exited early: ' + child.exitCode);
+    try {
+      const res = await fetch(`http://127.0.0.1:${WP_PORT}/api/health`);
+      if (res.ok) return;
+    } catch {
+      /* not up yet */
+    }
+    await sleep(200);
+  }
+  throw new Error('mock WP health timeout');
 }
 
 function stop(child, signal = 'SIGKILL') {
@@ -91,10 +121,14 @@ function openDb() {
 }
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+let mockWp = null;
+let relay = null;
 
 try {
+  mockWp = startMockWp();
+  await waitMockHealth(mockWp);
   // 1) 起 relay，等健康
-  let relay = startRelay();
+  relay = startRelay();
   await waitHealth(relay);
   console.log('✅ relay up on :' + PORT);
 
@@ -159,10 +193,17 @@ try {
 
   // 6) 清理
   await stop(relay, 'SIGTERM');
+  await stop(mockWp, 'SIGTERM');
   fs.rmSync(tmp, { recursive: true, force: true });
   console.log('🧹 临时目录已清理');
 } catch (e) {
   console.error('RESUME_E2E_FAIL —', e.message);
+  if (mockWp) {
+    try { await stop(mockWp, 'SIGTERM'); } catch {}
+  }
+  if (relay) {
+    try { await stop(relay, 'SIGTERM'); } catch {}
+  }
   try { fs.rmSync(tmp, { recursive: true, force: true }); } catch {}
   process.exit(1);
 }

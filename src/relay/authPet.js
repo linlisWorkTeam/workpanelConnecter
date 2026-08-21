@@ -11,6 +11,7 @@ import {
 } from './registry.js';
 import { findRunnerByToken, touchRunner } from './runners.js';
 import { findHostPeerByToken } from './hostPeers.js';
+import { findCredentialByToken } from './credentialStore.js';
 
 export { extractBearer, checkBearer as checkBearerLegacy } from './auth.js';
 
@@ -63,8 +64,12 @@ export function authenticateRequest(
     if (runner.status !== 'active') {
       return { ok: false, status: 401, error: 'runner disabled' };
     }
+    const credential = findCredentialByToken(token);
+    if (config?.enrollment?.requireDeviceCredentials === true && !credential) {
+      return { ok: false, status: 401, error: 'device credential required' };
+    }
     touchRunner(runner.id);
-    return { ok: true, kind: 'runner', petId: null, runner, client: 'runner' };
+    return { ok: true, kind: 'runner', petId: null, runner, credential, client: 'runner' };
   }
 
   const peer = findHostPeerByToken(token);

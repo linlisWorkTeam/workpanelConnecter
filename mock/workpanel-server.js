@@ -10,6 +10,7 @@ const port = Number(process.env.PORT || 8081);
 const groupId = process.env.GROUP_ID || 'local-group-1';
 const groupName = process.env.GROUP_NAME || 'local-canary';
 const coordinatorName = process.env.COORDINATOR_NAME || 'Cursor Agent';
+const failMessages = process.env.FAIL_MESSAGES === '1';
 
 const gateGroupId = process.env.GATE_GROUP_ID || '528b36ba-4769-4b4d-9fa8-51e2de132396';
 const gateGroupName = process.env.GATE_GROUP_NAME || '\u7070\u5ea6\u6d4b\u8bd5';
@@ -166,6 +167,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (req.method === 'POST' && path === '/api/messages') {
+    if (failMessages) return send(res, 503, { error: 'injected message failure' });
     if (
       !body.groupId ||
       !body.senderMemberId ||

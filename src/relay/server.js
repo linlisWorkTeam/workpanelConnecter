@@ -8,7 +8,11 @@ import { openDb, getDbPath, closeDb } from './db.js';
 import { syncConfigPets } from './registry.js';
 import { syncConfigRunners } from './runners.js';
 import { resumePending } from './delivery.js';
+import { reclaimExpiredTasks } from './services/taskQueueService.js';
 import { startHostJoin, stopHostJoin } from './hostJoin.js';
+import { enforceRetention } from './retention.js';
+import { logEvent } from './structuredLogger.js';
+import { validateFederationClientConfig } from './federationClient.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 export const ROOT = path.resolve(__dirname, '../..');
@@ -61,7 +65,16 @@ function applyCors(req, res, config) {
 
 async function readJson(req) {
   const chunks = [];
-  for await (const c of req) chunks.push(c);
+  let size = 0;
+  for await (const c of req) {
+    size += c.length;
+    if (size > 262144) {
+      const error = new Error('request body too large');
+      error.status = 413;
+      throw error;
+    }
+    chunks.push(c);
+  }
   const text = Buffer.concat(chunks).toString('utf8');
   if (!text) return {};
   return JSON.parse(text);
@@ -74,10 +87,13 @@ export async function bootstrapRelay(options = {}) {
   const { path: cfgPath, config } = loaded;
 
   const dbPath = options.dbPath || getDbPath(config, ROOT);
+  if (config?.host?.role === 'connecter' || config?.host?.baseUrl) validateFederationClientConfig(config);
   openDb(dbPath);
   await syncConfigPets(config);
-    await syncConfigRunners(config);
+  await syncConfigRunners(config);
+  await enforceRetention(config);
   if (options.resume !== false) {
+    await reclaimExpiredTasks({ actor: 'startup' });
     await resumePending(config);
   }
 
@@ -112,10 +128,22 @@ export function createRelayServer(options = {}) {
         return send(res, h.status, h.body);
       }
 
+      const hostOnly = config?.host?.role === 'host';
+      const hostPath = pathname.startsWith('/v1/host/') || pathname.startsWith('/v1/federation/') || pathname.startsWith('/v1/ops/');
+      if (hostOnly && !hostPath) {
+        return send(res, 404, { error: 'not found', path: pathname });
+      }
+
       if (req.method === 'POST' && pathname === '/v1/agents/register') {
         const body = await readJson(req);
         const h = await handlers.agentRegister(body);
         return send(res, h.status || 200, h.body || {});
+      }
+
+      if (req.method === 'POST' && pathname === '/v2/enrollments') {
+        const body = await readJson(req);
+        const h = await handlers.enrollmentCreate(body);
+        return send(res, h.status, h.body);
       }
 
       if (req.method === 'POST' && pathname === '/v1/host/peers/register') {
@@ -235,15 +263,199 @@ export function createRelayServer(options = {}) {
         return send(res, h.status, h.body);
       }
 
+      if (req.method === 'GET' && pathname === '/v1/ops/health/detail') {
+        const h = handlers.opsHealthDetail(auth);
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname.startsWith('/v1/ops/traces/')) {
+        const traceId = decodeURIComponent(pathname.slice('/v1/ops/traces/'.length));
+        const h = handlers.opsTrace(auth, traceId);
+        return send(res, h.status, h.body);
+      }
+
+      if (pathname === '/v1/ops/federation/policies') {
+        const h = req.method === 'GET'
+          ? handlers.opsPolicyList(auth, { status: url.searchParams.get('status'), limit: url.searchParams.get('limit') })
+          : req.method === 'POST'
+            ? await handlers.opsPolicyCreate(auth, await readJson(req))
+            : { status: 405, body: { error: 'method not allowed' } };
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'POST' && pathname.startsWith('/v1/ops/federation/policies/') && pathname.endsWith('/disable')) {
+        const id = decodeURIComponent(pathname.slice('/v1/ops/federation/policies/'.length, -'/disable'.length).replace(/\/$/, ''));
+        const h = await handlers.opsPolicyDisable(auth, id);
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname === '/v1/ops/federation/outbox') {
+        const h = handlers.opsFederationOutbox(auth, { status: url.searchParams.get('status'), limit: url.searchParams.get('limit') });
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'POST' && pathname.startsWith('/v1/ops/host/peers/')) {
+        const rest = pathname.slice('/v1/ops/host/peers/'.length).split('/');
+        if (rest.length === 2 && rest[0]) {
+          const siteId = decodeURIComponent(rest[0]);
+          const h = rest[1] === 'revoke'
+            ? handlers.hostPeerRevoke(auth, siteId)
+            : rest[1] === 'rotate'
+              ? handlers.hostPeerRotate(auth, siteId, await readJson(req))
+              : null;
+          if (h) return send(res, h.status, h.body);
+        }
+      }
+
+      if (req.method === 'GET' && pathname === '/v1/ops/security/deliveries') {
+        const h = handlers.opsSecurityDeliveries(auth, {
+          siteId: url.searchParams.get('siteId'), keyId: url.searchParams.get('keyId'),
+          status: url.searchParams.get('status'), since: url.searchParams.get('since'),
+          until: url.searchParams.get('until'), limit: url.searchParams.get('limit'),
+        });
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'POST' && pathname.startsWith('/v1/ops/federation/outbox/') && pathname.endsWith('/requeue')) {
+        const id = decodeURIComponent(pathname.slice('/v1/ops/federation/outbox/'.length, -'/requeue'.length).replace(/\/$/, ''));
+        const h = await handlers.opsFederationOutboxRequeue(auth, id);
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'POST' && pathname === '/v1/federation/messages') {
+        const h = await handlers.federationAccept(auth, await readJson(req));
+        return send(res, h.status, h.body);
+      }
+      if (req.method === 'POST' && pathname === '/v1/federation/pull') {
+        const h = await handlers.federationPull(auth, await readJson(req));
+        return send(res, h.status, h.body);
+      }
+      if (req.method === 'POST' && pathname === '/v1/federation/ack') {
+        const h = await handlers.federationAck(auth, await readJson(req));
+        return send(res, h.status, h.body);
+      }
+      if (req.method === 'POST' && pathname === '/v1/federation/result') {
+        const h = await handlers.federationComplete(auth, await readJson(req));
+        return send(res, h.status, h.body);
+      }
+      if (req.method === 'POST' && pathname === '/v1/federation/directory/advertise') {
+        const h = await handlers.federationAdvertise(auth, await readJson(req));
+        return send(res, h.status, h.body);
+      }
+      if (req.method === 'GET' && pathname === '/v1/federation/directory') {
+        const h = handlers.federationDirectory(auth, { groupRef: url.searchParams.get('groupRef') });
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname === '/v1/ops/tasks') {
+        const h = handlers.opsTasks(auth, {
+          status: url.searchParams.get('status'),
+          runnerId: url.searchParams.get('runnerId'),
+          limit: url.searchParams.get('limit'),
+        });
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname === '/v2/directory/subjects') {
+        const h = handlers.directorySubjects(auth, {
+          groupRef: url.searchParams.get('groupRef'),
+          kind: url.searchParams.get('kind'),
+          online: url.searchParams.get('online'),
+        });
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname === '/v2/directory/endpoints') {
+        const h = handlers.directoryEndpoints(auth, {
+          capability: url.searchParams.get('capability'),
+          siteId: url.searchParams.get('siteId'),
+        });
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname === '/v2/routes/explain') {
+        const h = handlers.routeExplain(auth, {
+          traceId: url.searchParams.get('traceId'),
+          groupRef: url.searchParams.get('groupRef'),
+          targetSubjectId: url.searchParams.get('targetSubjectId'),
+          agentName: url.searchParams.get('agentName'),
+          sourceSiteId: url.searchParams.get('sourceSiteId') || config?.host?.siteId || config?.siteId || 'local',
+          requiredCapabilities: url.searchParams.getAll('capability'),
+        });
+        return send(res, h.status, h.body);
+      }
+
+      if (req.method === 'GET' && pathname === '/v2/ops/enrollments') {
+        const h = handlers.enrollmentList(auth, { status: url.searchParams.get('status') });
+        return send(res, h.status, h.body);
+      }
+
+      if (pathname.startsWith('/v2/ops/enrollments/')) {
+        const rest = pathname.slice('/v2/ops/enrollments/'.length).split('/');
+        if (rest.length === 2 && req.method === 'POST') {
+          const enrollmentId = decodeURIComponent(rest[0]);
+          const body = await readJson(req);
+          const h = rest[1] === 'approve'
+            ? await handlers.enrollmentApprove(auth, enrollmentId, body)
+            : rest[1] === 'reject'
+              ? handlers.enrollmentReject(auth, enrollmentId)
+              : null;
+          if (h) return send(res, h.status, h.body);
+        }
+      }
+
+      if (req.method === 'POST' && pathname === '/v2/credentials/rotate') {
+        const h = await handlers.credentialRotate(auth);
+        return send(res, h.status, h.body);
+      }
+
+      if (pathname.startsWith('/v2/ops/credentials/') && pathname.endsWith('/revoke') && req.method === 'POST') {
+        const credentialId = decodeURIComponent(
+          pathname.slice('/v2/ops/credentials/'.length, -'/revoke'.length).replace(/\/$/, '')
+        );
+        const h = handlers.credentialRevoke(auth, credentialId);
+        return send(res, h.status, h.body);
+      }
+
+      if (pathname.startsWith('/v1/ops/tasks/')) {
+        const rest = pathname.slice('/v1/ops/tasks/'.length).split('/');
+        if (rest.length === 2 && rest[0]) {
+          const taskId = decodeURIComponent(rest[0]);
+          if (req.method === 'POST' && rest[1] === 'requeue') {
+            const body = await readJson(req);
+            const h = await handlers.opsTaskRequeue(auth, taskId, body);
+            return send(res, h.status, h.body);
+          }
+          if (req.method === 'POST' && rest[1] === 'cancel') {
+            const body = await readJson(req);
+            const h = await handlers.opsTaskCancel(auth, taskId, body);
+            return send(res, h.status, h.body);
+          }
+        }
+      }
+
 
         if (req.method === 'POST' && pathname === '/v1/agents/heartbeat') {
-          const h = handlers.agentHeartbeat(auth);
+          const body = await readJson(req);
+          const h = handlers.agentHeartbeat(auth, body);
           return send(res, h.status, h.body);
         }
 
         if (req.method === 'POST' && pathname === '/v1/agents/tasks/result') {
           const body = await readJson(req);
           const h = await handlers.agentTaskResult(auth, body);
+          return send(res, h.status, h.body);
+        }
+
+        if (req.method === 'POST' && pathname === '/v1/agents/tasks/ack') {
+          const body = await readJson(req);
+          const h = await handlers.agentTaskAck(auth, body);
+          return send(res, h.status, h.body);
+        }
+
+        if (req.method === 'POST' && pathname === '/v1/agents/tasks/renew') {
+          const body = await readJson(req);
+          const h = await handlers.agentTaskRenew(auth, body);
           return send(res, h.status, h.body);
         }
 
@@ -273,7 +485,7 @@ export function createRelayServer(options = {}) {
         }
       return send(res, 404, { error: 'not found', path: pathname });
     } catch (err) {
-      return send(res, 500, { error: String(err.message || err) });
+      return send(res, Number(err.status) || 500, { error: String(err.message || err) });
     }
   });
 
@@ -297,15 +509,17 @@ export async function listenRelay(options = {}) {
     server.listen(port, host, () => {
       const envs = Object.keys(config.backends || {}).join(',');
       const pets = (config.pets || []).length;
-        const runners = (config.runners || []).length;
+      const runners = (config.runners || []).length;
       const join = startHostJoin(config);
       server.on('close', () => {
         join.stop();
         stopHostJoin();
       });
-      console.log(
-        `connecter-relay listening http://${host}:${port} config=${cfgPath} backends=${envs} pets=${pets} db=${boot.dbPath}`
-      );
+      logEvent('info', 'relay.listening', {
+        siteId: config?.host?.siteId || config?.siteId || null,
+        role: config?.host?.role || 'standalone', host, port, configPath: cfgPath,
+        backends: envs ? envs.split(',') : [], pets, runners, dbPath: boot.dbPath,
+      });
       resolve({ server, port, host, config, cfgPath, dbPath: boot.dbPath, stopHostJoin: join.stop });
     });
   });

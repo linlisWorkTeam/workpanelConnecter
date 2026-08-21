@@ -1,10 +1,10 @@
 # WorkPanelConnecter
 
-连接 **各 WorkPanel（云端群组）** 与 **DeepSeek Harness（本机/远端 Agent 执行）** 的 **桥上中继 + CLI**。只做调度，不做业务。桌宠 UI：同仓 **WorkPet**。
+WorkPanel 的站点连接与联邦中间件。每个站点部署一台 **Connecter**，连接本站的 **WorkPet、WorkPanel、User 与 Runner/Agent**；全网部署一台中心化 **Connecter Host**，负责各 Connecter 的注册、目录交换和跨站消息中继。Host 不直接连接 WorkPet、WorkPanel 或 Runner，站内流量也不绕行 Host。
 
 桥接定位与设计见 [docs/bridge-deepseek-harness.md](docs/bridge-deepseek-harness.md)。
 
-**MVP（Phase 0–4）已完成** · 下一步见 [NEXT-DEV-PATH](docs/NEXT-DEV-PATH.md)
+DeepSeek Harness 只是可接入的 Runner 实现之一，不是 Connecter 的产品边界。当前 P0–P3 本地实现与 49 项发布门禁状态见 [P0–P3 实现状态](docs/P0-P3-IMPLEMENTATION-STATUS.md)。
 
 ## 启动方式
 
@@ -16,7 +16,7 @@ npm start
 
 启动交互式 REPL，支持 `/chat`、`/show-server`、`/help` 等命令。
 
-### 2. Connecter Relay（HTTP 中继服务器）
+### 2. Connecter（站点服务）
 
 ```bash
 # 先创建配置文件
@@ -48,9 +48,12 @@ npm run test:canary     # 直连 WP 灰度 :8081
 npm run test:relay      # 中继网关门禁
 npm run test:runner     # 可插拔 runner 队列/串行/TTL（无 WP）
 npm run test:e2-canary  # E2 实调用 canary :8081 + wp-runner（无 mock）
+npm run test:release-local # P0–P3 全量本地发布门禁（49 项，fail-fast）
 ```
 
 可选：`npm run test:e2e-resume`（杀进程续投）、`npm run test:workpet`。
+
+真实 canary 地址或群 fixture 与默认值不同时，可用 `CONNECTER_CANARY_URL`、`CONNECTER_CANARY_GROUP_ID`、`CONNECTER_CANARY_GROUP_NAME` 覆盖 `test:e2-canary`；脚本始终拒绝 `:8080` 生产端口。
 
 ## 前置依赖
 
@@ -65,6 +68,9 @@ npm run test:e2-canary  # E2 实调用 canary :8081 + wp-runner（无 mock）
 | [桥接设计（WorkPanel × DeepSeek Harness）](docs/bridge-deepseek-harness.md) | 本项目定位：连接各 WP 与 dsh 的桥上中继 |
 | [下一步路径](docs/NEXT-DEV-PATH.md) | P0–P3 开发顺序 |
 | [演进方向（Raft/本机 Agent）](docs/CONNECTER-EVOLUTION.md) | **2026-08-10 战略答复：E1–E4** |
+| [P0–P3 实现状态](docs/P0-P3-IMPLEMENTATION-STATUS.md) | 本地门禁、证据边界与外部验收项 |
+| [跨站联邦协议](docs/protocol/federation-v1.md) | Connecter ↔ Connecter Host 消息契约 |
+| [联邦本地实验室](docs/runbooks/federation-local-lab.md) | 双站点、Host 与故障恢复验证 |
 | [Relay API 契约](docs/api-relay.md) | `/v1/*` 冻结契约 |
 | [运维手册](deploy/README.md) | 备份 / token / systemd |
 | [Roadmap](docs/ROADMAP.md) | Phase 0–5 状态 |
@@ -73,6 +79,6 @@ npm run test:e2-canary  # E2 实调用 canary :8081 + wp-runner（无 mock）
 
 ## 约定
 
-- 默认 **canary**；禁止默认 prod；禁止 WP promote  
-- 代码在仓库根 / `src/` / `apps/` / `deploy/`；勿写入 `.linlis/agents/`  
-- `config/relay.json` 含 token，已 gitignore，勿提交  
+- 默认 **canary**；禁止默认 prod；禁止 WP promote
+- 代码在仓库根 / `src/` / `apps/` / `deploy/`；勿写入 `.linlis/agents/`
+- `config/relay.json` 含 token，已 gitignore，勿提交

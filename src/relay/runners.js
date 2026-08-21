@@ -9,10 +9,53 @@ import { db, writeTx, getMessageById, updateMessageStatus, upsertRun, insertMess
 import { hashToken } from './registry.js';
 import { makeEnvelope } from './messaging.js';
 import { postAsAgent } from '../workpanelClient.js';
+import { reclaimExpiredTasksTx } from './services/taskQueueService.js';
+import { parseRunnerRegistration } from './contracts/directory.js';
+import { touchRunnerDirectory, upsertRunnerDirectoryTx } from './directory.js';
+import { credentialAllowsRegistration, findCredentialForRunnerToken } from './credentialStore.js';
+import { groupRef } from './services/identityService.js';
+import { siteIdFor } from './directory.js';
+import { logEvent } from './structuredLogger.js';
 
 export function runnerHeartbeatTtlSec(config) {
   const n = Number(config?.runnerHeartbeatTtlSec);
   return Number.isFinite(n) && n > 0 ? n : 60;
+}
+
+export function runnerTaskLeaseSec(config) {
+  const n = Number(config?.runnerTaskLeaseSec);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 3600) : 60;
+}
+
+export function runnerTaskMaxAttempts(config) {
+  const n = Number(config?.runnerTaskMaxAttempts);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 100) : 3;
+}
+
+function runnerMaxConcurrency(config, runner) {
+  try {
+    const endpoint = db()
+      .prepare(
+        `SELECT e.max_concurrency FROM endpoints e
+         JOIN subjects s ON s.subject_id=e.subject_id
+         WHERE s.kind='agent' AND s.local_id=? AND e.status='active' LIMIT 1`
+      )
+      .get(runner?.id);
+    if (Number(endpoint?.max_concurrency) > 0) return Math.min(Number(endpoint.max_concurrency), 50);
+  } catch {
+    /* pre-directory schema compatibility */
+  }
+  const provisioned = (config?.runners || []).find((item) => item.agentId === runner?.id);
+  const n = Number(provisioned?.maxConcurrency);
+  return Number.isFinite(n) && n > 0 ? Math.min(Math.floor(n), 50) : 1;
+}
+
+function leaseDeadlineSql(seconds) {
+  return `+${Math.max(1, Math.floor(seconds))} seconds`;
+}
+
+function resultContentHash(status, content) {
+  return hashToken(JSON.stringify({ status, content: content ?? null }));
 }
 
 export function defaultBindingAgentName(g, config) {
@@ -59,19 +102,21 @@ export function syncConfigRunners(config) {
         throw new Error('runners[] requires agentId and token');
       }
       const role = r.role === 'special' ? 'special' : 'general';
+      const registration = parseRunnerRegistration({}, r);
       const channelId = r.channelId || `ch_${randomUUID()}`;
       database
         .prepare(
-          `INSERT INTO runners (id, agent_type, role, channel_id, token_hash, status, runtime, last_seen_at)
-           VALUES (?, ?, ?, ?, ?, 'active', ?, NULL)
+          `INSERT INTO runners (id, agent_type, role, channel_id, token_hash, status, runtime, protocol_version, last_seen_at)
+           VALUES (?, ?, ?, ?, ?, 'active', ?, ?, NULL)
            ON CONFLICT(id) DO UPDATE SET
              agent_type = excluded.agent_type,
              role = excluded.role,
              channel_id = excluded.channel_id,
              status = 'active',
-             runtime = excluded.runtime`
+             runtime = excluded.runtime,
+             protocol_version = excluded.protocol_version`
         )
-        .run(r.agentId, resolveRunnerAgentType(r), role, channelId, hashToken(r.token), r.runtime || 'local');
+        .run(r.agentId, resolveRunnerAgentType(r), role, channelId, hashToken(r.token), r.runtime || 'local', registration.protocolVersion);
 
       const bindings = r.bindings || [];
       for (const b of bindings) {
@@ -83,6 +128,18 @@ export function syncConfigRunners(config) {
         upsertBinding(database, { runnerId: r.agentId, role, channelId, env, groupId, groupName, agentName });
         out.push({ runnerId: r.agentId, env, groupId, agentName });
       }
+      upsertRunnerDirectoryTx(database, config, {
+        runnerId: r.agentId,
+        displayName: r.displayName || bindings[0]?.agentName || r.agentId,
+        runtime: r.runtime || 'local',
+        bindings: bindings.map((b) => ({
+          groupId: b.groupId || b.group || b.id,
+          groupRef: b.groupRef,
+          role: role === 'special' ? 'special' : 'agent',
+        })),
+        registration,
+        online: false,
+      });
     }
     return out;
   });
@@ -123,14 +180,24 @@ export function registerRunner(config, body) {
     return Promise.resolve({ status: 400, body: { error: 'agentId and token required' } });
   }
   const provisioned = (config.runners || []).find((r) => r.agentId === agentId);
-  if (!provisioned) {
+  const credential = findCredentialForRunnerToken(token, agentId);
+  if (!provisioned && !credential) {
     return Promise.resolve({ status: 403, body: { error: 'agentId not provisioned' } });
   }
-  if (provisioned.token !== token) {
+  if (provisioned && provisioned.token !== token && !credential) {
     return Promise.resolve({ status: 401, body: { error: 'token mismatch' } });
   }
-  const role = provisioned.role === 'special' ? 'special' : 'general';
-  const runtime = body.runtime || provisioned.runtime || 'local';
+  if (config?.enrollment?.requireDeviceCredentials === true && !credential) {
+    return Promise.resolve({ status: 403, body: { error: 'approved device credential required', code: 'DEVICE_CREDENTIAL_REQUIRED' } });
+  }
+  const role = provisioned?.role === 'special' ? 'special' : 'general';
+  const runtime = body.runtime || provisioned?.runtime || 'local';
+  let registration;
+  try {
+    registration = parseRunnerRegistration(body, provisioned || {});
+  } catch (error) {
+    return Promise.resolve({ status: 400, body: { error: String(error.message || error), code: 'INVALID_RUNNER_REGISTRATION' } });
+  }
   const baseUrl =
     config.publicBaseUrl || `http://127.0.0.1:${config.listen?.port || 80}`;
 
@@ -139,21 +206,36 @@ export function registerRunner(config, body) {
     const channelId = existing?.channel_id || `ch_${randomUUID()}`;
     database
       .prepare(
-        `INSERT INTO runners (id, agent_type, role, channel_id, token_hash, status, runtime, last_seen_at)
-         VALUES (?, ?, ?, ?, ?, 'active', ?, datetime('now'))
+        `INSERT INTO runners (id, agent_type, role, channel_id, token_hash, status, runtime, protocol_version, last_seen_at)
+         VALUES (?, ?, ?, ?, ?, 'active', ?, ?, datetime('now'))
          ON CONFLICT(id) DO UPDATE SET
            agent_type = excluded.agent_type,
            role = excluded.role,
            channel_id = excluded.channel_id,
            status = 'active',
            runtime = excluded.runtime,
+           protocol_version = excluded.protocol_version,
            last_seen_at = datetime('now')`
       )
-      .run(agentId, resolveRunnerAgentType(provisioned, body), role, channelId, hashToken(token), runtime);
+      .run(agentId, resolveRunnerAgentType(provisioned, body), role, channelId, hashToken(token), runtime, registration.protocolVersion);
 
     const groups = Array.isArray(body.groups) && body.groups.length
       ? body.groups
-      : (provisioned.bindings || []);
+      : (provisioned?.bindings || []);
+    if (!groups.length) {
+      return { status: 400, body: { error: 'at least one group binding required', code: 'GROUP_BINDING_REQUIRED' } };
+    }
+    if (credential) {
+      const siteId = siteIdFor(config);
+      const allowed = credentialAllowsRegistration(credential, {
+        siteId,
+        groupRefs: groups.map((group) => group.groupRef || groupRef({ authority: siteId, groupId: group.groupId || group.group || group.id })),
+        capabilities: registration.capabilities.map((item) => item.name),
+      });
+      if (!allowed) {
+        return { status: 403, body: { error: 'credential scope does not allow registration', code: 'CREDENTIAL_SCOPE_DENIED' } };
+      }
+    }
     for (const g of groups) {
       const env = g.env || config.defaults?.env || 'canary';
       const groupId = g.groupId || g.group || g.id;
@@ -174,12 +256,27 @@ export function registerRunner(config, body) {
         throw err;
       }
     }
+    const directory = upsertRunnerDirectoryTx(database, config, {
+      runnerId: agentId,
+      displayName: body.displayName || provisioned?.displayName || groups[0]?.agentName || agentId,
+      runtime,
+      bindings: groups.map((group) => ({
+        groupId: group.groupId || group.group || group.id,
+        groupRef: group.groupRef,
+        role: role === 'special' ? 'special' : 'agent',
+      })),
+      registration,
+      online: true,
+    });
     return {
       status: 200,
       body: {
         agentId,
         channelId,
         role,
+        protocolVersion: registration.protocolVersion,
+        subjectId: directory.subjectId,
+        endpointId: directory.endpointId,
         taskUrl: `${baseUrl}/v1/agents/tasks`,
         heartbeatUrl: `${baseUrl}/v1/agents/heartbeat`,
       },
@@ -189,6 +286,8 @@ export function registerRunner(config, body) {
 
 /** Persist an outbound task for a runner (chat target is runner-bound). */
 export function enqueueRunnerTask({
+  config,
+  taskId: requestedTaskId,
   runnerId,
   channelId,
   env,
@@ -197,14 +296,16 @@ export function enqueueRunnerTask({
   upMessage,
   content,
   context,
+  federation = null,
 }) {
   return writeTx((database) => {
-    const taskId = upMessage?.id || `task_${randomUUID()}`;
+    const taskId = requestedTaskId || upMessage?.id || `task_${randomUUID()}`;
     database
       .prepare(
         `INSERT INTO runner_tasks
-          (id, runner_id, channel_id, env, group_id, agent_name, up_message_id, prompt, context_json, status)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued')
+          (id, runner_id, channel_id, env, group_id, agent_name, up_message_id, prompt, context_json, status, max_attempts, available_at,
+           federation_origin_site, federation_message_id, federation_correlation_id)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'queued', ?, datetime('now'), ?, ?, ?)
          ON CONFLICT(id) DO NOTHING`
       )
       .run(
@@ -216,44 +317,66 @@ export function enqueueRunnerTask({
         agentName,
         upMessage?.id || null,
         String(content),
-        context ? JSON.stringify(context) : null
+        context ? JSON.stringify(context) : null,
+        runnerTaskMaxAttempts(config),
+        federation?.originSite || null,
+        federation?.messageId || null,
+        federation?.correlationId || null
       );
     return database.prepare('SELECT * FROM runner_tasks WHERE id = ?').get(taskId);
   });
 }
 
-/** Runner pulls queued tasks (at most one in-flight dispatched per runner). */
-export function pollRunnerTasks(runner, { limit = 1 } = {}) {
+/** Runner atomically claims queued tasks with a renewable fencing lease. */
+export function pollRunnerTasks(config, runner, { limit = 1 } = {}) {
   const lim = Math.min(Math.max(Number(limit) || 1, 1), 50);
+  const leaseSec = runnerTaskLeaseSec(config);
+  const maxConcurrency = runnerMaxConcurrency(config, runner);
   return writeTx((database) => {
+    reclaimExpiredTasksTx(database, { runnerId: runner.id, actor: `runner:${runner.id}` });
+
     const inflight = database
       .prepare(
-        `SELECT id FROM runner_tasks WHERE runner_id = ? AND status = 'dispatched' LIMIT 1`
+        `SELECT COUNT(*) AS n FROM runner_tasks
+         WHERE runner_id = ? AND status IN ('dispatched', 'leased', 'acknowledged', 'running')
+           AND lease_until > datetime('now')`
       )
-      .get(runner.id);
-    if (inflight) {
+      .get(runner.id).n;
+    const slots = Math.max(0, maxConcurrency - Number(inflight || 0));
+    if (!slots) {
       return { status: 200, body: { tasks: [] } };
     }
     const rows = database
       .prepare(
         `SELECT * FROM runner_tasks
          WHERE runner_id = ? AND status = 'queued'
+           AND attempt < max_attempts
+           AND (available_at IS NULL OR available_at <= datetime('now'))
          ORDER BY created_at ASC LIMIT ?`
       )
-      .all(runner.id, lim);
+      .all(runner.id, Math.min(lim, slots));
+    const claimed = [];
     for (const row of rows) {
-      database
+      const leaseToken = `lease_${randomUUID()}_${randomUUID()}`;
+      const updated = database
         .prepare(
-          `UPDATE runner_tasks SET status = 'dispatched', dispatched_at = datetime('now')
+          `UPDATE runner_tasks
+           SET status = 'leased', dispatched_at = datetime('now'), lease_owner = ?,
+               lease_token_hash = ?, lease_until = datetime('now', ?), attempt = attempt + 1,
+               acknowledged_at = NULL, last_error = NULL
            WHERE id = ? AND status = 'queued'`
         )
-        .run(row.id);
+        .run(runner.id, hashToken(leaseToken), leaseDeadlineSql(leaseSec), row.id);
+      if (updated.changes === 1) claimed.push({ ...row, leaseToken, attempt: Number(row.attempt || 0) + 1 });
     }
     return {
       status: 200,
       body: {
-        tasks: rows.map((r) => ({
+        tasks: claimed.map((r) => ({
           taskId: r.id,
+          leaseToken: r.leaseToken,
+          leaseSec,
+          attempt: r.attempt,
           prompt: r.prompt,
           context: r.context_json ? JSON.parse(r.context_json) : null,
           env: r.env,
@@ -288,9 +411,83 @@ export function asAgentTasksResult(pulled) {
   return { status: 200, body: { tasks: [] } };
 }
 
-export function heartbeatRunner(runner) {
+export function heartbeatRunner(config, runner, body = {}) {
   touchRunner(runner.id);
-  return { ok: true, agentId: runner.id, channelId: runner.channel_id };
+  const directory = touchRunnerDirectory(config, runner.id, { load: body.load });
+  return { ok: true, agentId: runner.id, channelId: runner.channel_id, ...directory };
+}
+
+export function findRunnerBindingForRunner({ runnerId, env, groupId, agentName }) {
+  return db()
+    .prepare(
+      `SELECT b.*, r.role AS runner_role, r.status AS runner_status, r.last_seen_at
+       FROM runner_bindings b JOIN runners r ON r.id=b.runner_id
+       WHERE b.runner_id=? AND b.env=? AND b.group_id=?
+         AND (? IS NULL OR b.agent_name=?) AND b.status='active' AND r.status!='disabled'
+       LIMIT 1`
+    )
+    .get(runnerId, env, groupId, agentName || null, agentName || null) || null;
+}
+
+function verifyTaskLease(config, task, runner, body) {
+  if (task.runner_id !== runner.id) {
+    return { status: 403, body: { error: 'task not owned by this runner', code: 'TASK_NOT_OWNED' } };
+  }
+  const supplied = String(body?.leaseToken || '');
+  if (!supplied && config?.runnerProtocolCompatibility === 'v1' && Number(runner.protocol_version || 1) === 1) return null;
+  if (!supplied) {
+    return { status: 428, body: { error: 'leaseToken required', code: 'LEASE_TOKEN_REQUIRED' } };
+  }
+  if (!task.lease_token_hash || hashToken(supplied) !== task.lease_token_hash) {
+    return { status: 409, body: { error: 'stale lease', code: 'STALE_LEASE', taskId: task.id } };
+  }
+  if (!task.lease_until) {
+    return { status: 409, body: { error: 'lease is not active', code: 'STALE_LEASE', taskId: task.id } };
+  }
+  const fresh = db()
+    .prepare(`SELECT CASE WHEN ? > datetime('now') THEN 1 ELSE 0 END AS fresh`)
+    .get(task.lease_until).fresh;
+  if (!fresh) {
+    return { status: 409, body: { error: 'lease expired', code: 'STALE_LEASE', taskId: task.id } };
+  }
+  return null;
+}
+
+export function acknowledgeRunnerTask(config, runner, body) {
+  const taskId = String(body?.taskId || '').trim();
+  if (!taskId) return Promise.resolve({ status: 400, body: { error: 'taskId required' } });
+  return writeTx((database) => {
+    const task = database.prepare('SELECT * FROM runner_tasks WHERE id = ?').get(taskId);
+    if (!task) return { status: 404, body: { error: 'task not found' } };
+    const denied = verifyTaskLease(config, task, runner, body);
+    if (denied) return denied;
+    if (['completed', 'failed', 'cancelled', 'dead'].includes(task.status)) {
+      return { status: 409, body: { error: 'task already terminal', code: 'TASK_TERMINAL', taskId } };
+    }
+    database
+      .prepare(`UPDATE runner_tasks SET status = 'acknowledged', acknowledged_at = COALESCE(acknowledged_at, datetime('now')) WHERE id = ?`)
+      .run(taskId);
+    return { status: 200, body: { ok: true, taskId, status: 'acknowledged' } };
+  });
+}
+
+export function renewRunnerTask(config, runner, body) {
+  const taskId = String(body?.taskId || '').trim();
+  if (!taskId) return Promise.resolve({ status: 400, body: { error: 'taskId required' } });
+  return writeTx((database) => {
+    const task = database.prepare('SELECT * FROM runner_tasks WHERE id = ?').get(taskId);
+    if (!task) return { status: 404, body: { error: 'task not found' } };
+    const denied = verifyTaskLease(config, task, runner, body);
+    if (denied) return denied;
+    if (['completed', 'failed', 'cancelled', 'dead'].includes(task.status)) {
+      return { status: 409, body: { error: 'task already terminal', code: 'TASK_TERMINAL', taskId } };
+    }
+    const leaseSec = runnerTaskLeaseSec(config);
+    database
+      .prepare(`UPDATE runner_tasks SET lease_until = datetime('now', ?) WHERE id = ?`)
+      .run(leaseDeadlineSql(leaseSec), taskId);
+    return { status: 200, body: { ok: true, taskId, leaseSec } };
+  });
 }
 
 /**
@@ -305,6 +502,11 @@ export function submitRunnerTaskResult(config, runner, body) {
   }
   const raw = String(body.status || 'completed');
   const isPartial = raw === 'running' || raw === 'accepted';
+  const resultId = String(body.resultId || '').trim();
+  const v1Compatibility = config?.runnerProtocolCompatibility === 'v1' && Number(runner.protocol_version || 1) === 1;
+  if (!resultId && !v1Compatibility) {
+    return Promise.resolve({ status: 400, body: { error: 'resultId required', code: 'RESULT_ID_REQUIRED' } });
+  }
   const status = isPartial
     ? 'dispatched'
     : raw === 'failed' || raw === 'cancelled'
@@ -313,9 +515,19 @@ export function submitRunnerTaskResult(config, runner, body) {
   return writeTx((database) => {
     const task = database.prepare('SELECT * FROM runner_tasks WHERE id = ?').get(taskId);
     if (!task) return { status: 404, body: { error: 'task not found' } };
-    if (task.runner_id !== runner.id) {
-      return { status: 403, body: { error: 'task not owned by this runner' } };
+    const effectiveResultId = resultId || `v1_${taskId}_${raw}`;
+    const contentHash = resultContentHash(raw, body.content);
+    const prior = database
+      .prepare(`SELECT * FROM runner_task_results WHERE task_id = ? AND result_id = ?`)
+      .get(taskId, effectiveResultId);
+    if (prior) {
+      if (prior.status !== raw || prior.content_hash !== contentHash) {
+        return { status: 409, body: { error: 'resultId payload conflict', code: 'RESULT_ID_CONFLICT', taskId } };
+      }
+      return { status: 200, body: { ...JSON.parse(prior.response_json), duplicate: true } };
     }
+    const denied = verifyTaskLease(config, task, runner, body);
+    if (denied) return denied;
     if (!isPartial && (task.status === 'completed' || task.status === 'failed' || task.status === 'cancelled')) {
       return { status: 409, body: { error: 'task already terminal', taskId, status: task.status } };
     }
@@ -323,21 +535,24 @@ export function submitRunnerTaskResult(config, runner, body) {
     const resultJson = body.content != null ? JSON.stringify({ content: body.content, phase: raw }) : null;
     if (isPartial) {
       database
-        .prepare(`UPDATE runner_tasks SET result_json = ? WHERE id = ?`)
-        .run(resultJson, taskId);
+        .prepare(`UPDATE runner_tasks SET status = 'running', result_json = ?, result_id = ? WHERE id = ?`)
+        .run(resultJson, effectiveResultId, taskId);
     } else {
       database
         .prepare(
-          `UPDATE runner_tasks SET status = ?, result_json = ?, completed_at = datetime('now') WHERE id = ?`
+          `UPDATE runner_tasks
+           SET status = ?, result_json = ?, result_id = ?, completed_at = datetime('now'),
+               lease_token_hash = NULL, lease_until = NULL
+           WHERE id = ?`
         )
-        .run(status, resultJson, taskId);
+        .run(status, resultJson, effectiveResultId, taskId);
     }
 
     const reportStatus = isPartial ? raw : status;
     if (task.up_message_id) {
       const up = getMessageById(database, task.up_message_id);
       if (up) {
-        if (!isPartial) updateMessageStatus(database, up.id, 'delivered', null);
+        if (!isPartial) updateMessageStatus(database, up.id, status === 'completed' ? 'delivered' : 'failed', null);
         const upEnv = JSON.parse(up.envelope_json);
         const down = makeEnvelope({
           id: `msg_${randomUUID()}`,
@@ -362,16 +577,33 @@ export function submitRunnerTaskResult(config, runner, body) {
       }
     }
 
-    upsertRun(database, {
-      id: taskId,
-      message_id: task.up_message_id || taskId,
-      agent_instance_id: task.up_message_id
-        ? getMessageById(database, task.up_message_id)?.agent_instance_id || null
-        : null,
-      status: reportStatus,
-      detail_json: resultJson,
-    });
-    return { status: 200, body: { ok: true, taskId, status: reportStatus } };
+    if (task.up_message_id) {
+      const up = getMessageById(database, task.up_message_id);
+      if (up) {
+        upsertRun(database, {
+          id: taskId,
+          message_id: task.up_message_id,
+          agent_instance_id: up.agent_instance_id,
+          status: reportStatus,
+          detail_json: resultJson,
+        });
+      }
+    }
+    const response = {
+      ok: true, taskId, status: reportStatus, resultId: effectiveResultId,
+      federation: task.federation_origin_site ? {
+        originSite: task.federation_origin_site,
+        messageId: task.federation_message_id,
+        correlationId: task.federation_correlation_id,
+      } : null,
+    };
+    database
+      .prepare(
+        `INSERT INTO runner_task_results (task_id, result_id, status, content_hash, response_json)
+         VALUES (?, ?, ?, ?, ?)`
+      )
+      .run(taskId, effectiveResultId, raw, contentHash, JSON.stringify(response));
+    return { status: 200, body: response };
   });
 }
 
@@ -421,7 +653,10 @@ export async function postRunnerResultToGroup(config, runner, body) {
     { groupId: task.group_id, agentName: task.agent_name || 'Runner', content }
   );
   if (!result.ok) {
-    console.warn(`[runner] group write-back failed for ${task.id}: ${result.status} ${result.error || ''}`);
+    logEvent('warn', 'runner.workpanel_writeback_failed', {
+      taskId: task.id, siteId: config?.host?.siteId || config?.siteId || null,
+      subjectId: runner?.id || null, status: result.status, error: result.error || null,
+    });
   }
   return result;
 }
