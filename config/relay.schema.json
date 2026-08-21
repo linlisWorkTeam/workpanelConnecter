@@ -47,6 +47,70 @@
       "type": "integer",
       "description": "Runner 心跳 TTL 秒，默认 60。过期则绑定目标 503 runner_offline"
     },
+    "runnerTaskLeaseSec": {
+      "type": "integer",
+      "description": "Runner task lease 秒，默认 60；必须通过 ack/renew/result 携带 leaseToken。"
+    },
+    "runnerTaskMaxAttempts": {
+      "type": "integer",
+      "description": "Runner task lease 超时后的最大领取次数，默认 3。"
+    },
+    "runnerProtocolCompatibility": {
+      "enum": ["v1"],
+      "description": "仅迁移期显式开启：允许旧 Runner 不发送 leaseToken/resultId。"
+    },
+    "directoryV2Shadow": {
+      "type": "boolean",
+      "description": "记录 Directory v2 路由决定但仍使用旧绑定投递。"
+    },
+    "directoryV2RoutingEnabled": {
+      "type": "boolean",
+      "description": "启用 Directory v2 实际路由；应先完成 shadow 对比。"
+    },
+    "federation": {
+      "type": "object",
+      "properties": {
+        "enabled": { "type": "boolean" },
+        "leaseSec": { "type": "integer", "minimum": 1, "maximum": 600 },
+        "maxAttempts": { "type": "integer", "minimum": 1, "maximum": 100 },
+        "maxPayloadBytes": { "type": "integer", "minimum": 1024, "maximum": 1048576 },
+        "allowedSites": { "type": "array", "items": { "type": "string" } },
+        "allowedGroups": { "type": "array", "items": { "type": "string" } }
+        ,"legacyAllowlistEnabled": { "type": "boolean", "description": "Temporary compatibility only; prefer explicit policies" }
+        ,"policies": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "required": ["originSite", "targetSite", "groupRef", "operation", "direction"],
+            "properties": {
+              "originSite": { "type": "string" }, "targetSite": { "type": "string" },
+              "groupRef": { "type": "string" }, "subjectId": { "type": "string" },
+              "operation": { "type": "string" }, "direction": { "type": "string" },
+              "capability": { "type": "string" }, "dataClassification": { "type": "string" },
+              "effect": { "enum": ["allow", "deny"] }, "version": { "type": "string" }
+            }
+          }
+        }
+        ,"requireSignatures": { "type": "boolean" }
+        ,"requireTls": { "type": "boolean" }
+        ,"requireSeparateSigningKey": { "type": "boolean" }
+        ,"requireExternalSigningKey": { "type": "boolean", "description": "Reject inline signing secrets; require secretEnv or secretFile" }
+        ,"quotas": {
+          "type": "object",
+          "properties": {
+            "requestsPerMinute": { "type": "integer", "minimum": 1, "maximum": 100000 },
+            "maxInflight": { "type": "integer", "minimum": 1, "maximum": 1000000 },
+            "maxQueueBytes": { "type": "integer", "minimum": 1048576, "maximum": 1073741824 },
+            "minFreeBytes": { "type": "integer", "minimum": 0 }
+            ,"maxDeadLetters": { "type": "integer", "minimum": 1, "maximum": 1000000 }
+            ,"maxConcurrentPulls": { "type": "integer", "minimum": 1, "maximum": 20 }
+          }
+        }
+        ,"maxTtlSec": { "type": "integer", "minimum": 1, "maximum": 86400 }
+        ,"reconcileSec": { "type": "integer", "minimum": 1, "maximum": 3600 }
+        ,"outboxMaxAttempts": { "type": "integer", "minimum": 1, "maximum": 10000 }
+      }
+    },
     "wpSlotHeartbeatTtlSec": {
       "type": "integer",
       "description": "自注册 WP 槽位 TTL 秒"
@@ -85,6 +149,18 @@
         "baseUrl": { "type": "string", "description": "站点 Connecter 要加入的 Host 根 URL" },
         "siteId": { "type": "string" },
         "token": { "type": "string", "description": "加入 Host 的 peer token（须在 Host 的 host.peers[] 预配）" },
+        "tls": {
+          "type": "object",
+          "description": "HTTPS/mTLS client material; key bytes must stay in a restricted external file",
+          "properties": {
+            "caFile": { "type": "string" },
+            "certFile": { "type": "string" },
+            "keyFile": { "type": "string" },
+            "serverName": { "type": "string" }
+          },
+          "additionalProperties": false
+        },
+        "keys": { "type": "array", "items": { "$ref": "#/$defs/signingKey" } },
         "heartbeatMs": { "type": "integer", "description": "出站心跳间隔，默认 15000" },
         "peerHeartbeatTtlSec": { "type": "integer", "description": "Host 侧 peer TTL，默认 90" },
         "peers": {
@@ -96,7 +172,8 @@
             "properties": {
               "siteId": { "type": "string" },
               "token": { "type": "string" },
-              "label": { "type": "string" }
+              "label": { "type": "string" },
+              "keys": { "type": "array", "items": { "$ref": "#/$defs/signingKey" } }
             }
           }
         }
@@ -107,6 +184,23 @@
       "description": "出站 Runner 预配。协议见 docs/protocol/runners.md",
       "items": { "$ref": "#/$defs/runner" }
     },
+    "retention": {
+      "type": "object",
+      "properties": {
+        "terminalDays": { "type": "integer", "minimum": 1, "maximum": 3650 },
+        "telemetryDays": { "type": "integer", "minimum": 1, "maximum": 3650 }
+        ,"auditDays": { "type": "integer", "minimum": 1, "maximum": 3650 }
+      }
+    },
+    "enrollment": {
+      "type": "object",
+      "description": "P1 设备接入审批。codes 仅用于一次性 bootstrap；生产凭证审批后签发。",
+      "properties": {
+        "codes": { "type": "array", "items": { "type": "string" } },
+        "credentialTtlSec": { "type": "integer", "minimum": 60, "maximum": 31536000 },
+        "requireDeviceCredentials": { "type": "boolean", "description": "Reject long-lived static Runner bearer tokens after bootstrap enrollment" }
+      }
+    },
     "pets": {
       "type": "array",
       "description": "WorkPet 配置登记。动态 POST /v1/register 为二期。",
@@ -114,6 +208,17 @@
     }
   },
   "$defs": {
+    "signingKey": {
+      "type": "object",
+      "required": ["keyId"],
+      "properties": {
+        "keyId": { "type": "string" },
+        "status": { "enum": ["active", "next", "revoked"] },
+        "secretEnv": { "type": "string", "description": "Recommended production secret source" },
+        "secretFile": { "type": "string", "description": "Restricted external secret file" },
+        "secret": { "type": "string", "description": "Development only; do not commit" }
+      }
+    },
     "backend": {
       "type": "object",
       "required": ["baseUrl"],
@@ -142,6 +247,7 @@
         "agentType": { "type": "string", "description": "默认 runner；dsh 仍合法" },
         "role": { "enum": ["general", "special"] },
         "runtime": { "type": "string", "description": "local | ecs | remote…" },
+        "maxConcurrency": { "type": "integer", "minimum": 1, "maximum": 50 },
         "channelId": { "type": "string", "description": "省略则启动生成" },
         "bindings": {
           "type": "array",

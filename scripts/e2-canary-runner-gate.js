@@ -22,10 +22,12 @@ async function jsonFetch(url, opts = {}) {
 async function main() {
   const PORT = Number(process.env.CONNECTER_E2_PORT || 9098);
   const PET_TOKEN = 'e2-pet-token';
-  const GROUP_ID = '528b36ba-4769-4b4d-9fa8-51e2de132396';
-  const canaryUrl = 'http://127.0.0.1:8081';
+  const GROUP_ID = process.env.CONNECTER_CANARY_GROUP_ID || '528b36ba-4769-4b4d-9fa8-51e2de132396';
+  const GROUP_NAME = process.env.CONNECTER_CANARY_GROUP_NAME || '灰度测试';
+  const canaryUrl = String(process.env.CONNECTER_CANARY_URL || 'http://127.0.0.1:8081').replace(/\/+$/, '');
+  assert(!/:8080\b/.test(canaryUrl), 'REFUSE prod :8080');
   const health = await fetch(`${canaryUrl}/api/health`).catch(() => null);
-  assert(health && health.ok, 'canary :8081 must be up');
+  assert(health && health.ok, `canary ${canaryUrl} must be up`);
 
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'connecter-e2-'));
   const cfgPath = path.join(tmp, 'relay.json');
@@ -42,14 +44,14 @@ async function main() {
         auth: { username: 'root', password: 'root' },
       },
     },
-    defaults: { env: 'canary', group: '灰度测试' },
+    defaults: { env: 'canary', group: GROUP_NAME },
     runners: [],
     pets: [
       {
         id: 'pet-e2',
         name: 'E2 Pet',
         token: PET_TOKEN,
-        groups: [{ env: 'canary', groupId: GROUP_ID, groupName: '灰度测试' }],
+        groups: [{ env: 'canary', groupId: GROUP_ID, groupName: GROUP_NAME }],
       },
     ],
   };
@@ -63,7 +65,7 @@ async function main() {
   const petHeaders = { authorization: `Bearer ${PET_TOKEN}`, 'content-type': 'application/json' };
 
   try {
-    const members = await jsonFetch(`${base}/v1/members?group=${encodeURIComponent('灰度测试')}`, {
+    const members = await jsonFetch(`${base}/v1/members?group=${encodeURIComponent(GROUP_NAME)}`, {
       headers: { authorization: `Bearer ${PET_TOKEN}` },
     });
     assert(members.status === 200, `members ${members.status}`);
@@ -81,7 +83,7 @@ async function main() {
       headers: petHeaders,
       body: JSON.stringify({
         id: `msg_e2_bad_${randomUUID()}`,
-        group: '灰度测试',
+        group: GROUP_NAME,
         prompt: '@NotAnAgent_zzz 不该发出',
       }),
     });
@@ -92,7 +94,7 @@ async function main() {
       headers: petHeaders,
       body: JSON.stringify({
         id: `msg_e2_noat_${randomUUID()}`,
-        group: '灰度测试',
+        group: GROUP_NAME,
         prompt: `E2 无@验收 ${new Date().toISOString()} — 请仅确认收到，勿深层委派。`,
       }),
     });
@@ -107,7 +109,7 @@ async function main() {
         headers: petHeaders,
         body: JSON.stringify({
           id: `msg_e2_at_${randomUUID()}`,
-          group: '灰度测试',
+          group: GROUP_NAME,
           prompt: `@${otherAgent.displayName} E2 @验收 ${new Date().toISOString()} — 请仅确认收到，勿深层委派。`,
         }),
       });
@@ -120,7 +122,7 @@ async function main() {
         headers: petHeaders,
         body: JSON.stringify({
           id: `msg_e2_atadmin_${randomUUID()}`,
-          group: '灰度测试',
+          group: GROUP_NAME,
           prompt: `@${adminName} E2 @管理员验收 ${new Date().toISOString()} — 请仅确认收到。`,
         }),
       });
@@ -143,7 +145,7 @@ async function main() {
       )
     );
   } finally {
-    server.close();
+    await new Promise((resolve) => server.close(resolve));
     closeDb();
   }
 }

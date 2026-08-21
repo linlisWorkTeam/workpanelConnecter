@@ -90,6 +90,9 @@ async function main() {
     auth: { tokens: [OPS_TOKEN] },
     allowProdFromPet: false,
     runnerHeartbeatTtlSec: 60,
+    runnerTaskLeaseSec: 60,
+    runnerTaskMaxAttempts: 3,
+    directoryV2RoutingEnabled: true,
     rateLimitPerMin: 120,
     backends: {
       // canary is configured but must NOT be touched: the chat below is dsh-bound
@@ -208,6 +211,13 @@ async function main() {
     assert(Array.isArray(empty.body.tasks), 'tasks is array');
     const pulled = empty.body.tasks.find((t) => t.taskId === msgId);
     assert(!!pulled && pulled.prompt === 'runner ping', 'task pulled with prompt');
+    assert(pulled.leaseToken && pulled.attempt === 1, 'task pulled with lease token');
+    const ack = await jsonFetch(`${base}/v1/agents/tasks/ack`, {
+      method: 'POST',
+      headers: runnerHeaders,
+      body: JSON.stringify({ taskId: msgId, leaseToken: pulled.leaseToken }),
+    });
+    assert(ack.status === 200 && ack.body.status === 'acknowledged', 'task ack');
 
     // serial: second chat stays queued while first is dispatched
     const msgId2 = `msg_runner_gate2_${randomUUID()}`;
@@ -230,6 +240,8 @@ async function main() {
       headers: runnerHeaders,
       body: JSON.stringify({
         taskId: msgId,
+        leaseToken: pulled.leaseToken,
+        resultId: `result-running-${randomUUID()}`,
         status: 'running',
         content: 'wp_accepted messageId=wp-fake',
         writeBack: false,
@@ -249,7 +261,14 @@ async function main() {
     const res = await jsonFetch(`${base}/v1/agents/tasks/result`, {
       method: 'POST',
       headers: runnerHeaders,
-      body: JSON.stringify({ taskId: msgId, status: 'completed', content: 'hello back', writeBack: false }),
+      body: JSON.stringify({
+        taskId: msgId,
+        leaseToken: pulled.leaseToken,
+        resultId: `result-completed-${randomUUID()}`,
+        status: 'completed',
+        content: 'hello back',
+        writeBack: false,
+      }),
     });
     assert(res.status === 200 && res.body.ok === true, 'result ok');
 
@@ -267,11 +286,19 @@ async function main() {
       headers: runnerHeaders,
       body: JSON.stringify({}),
     });
-    assert(pulled2.body.tasks.some((t) => t.taskId === msgId2), 'second task dispatched after first completed');
+    const second = pulled2.body.tasks.find((t) => t.taskId === msgId2);
+    assert(!!second, 'second task dispatched after first completed');
     await jsonFetch(`${base}/v1/agents/tasks/result`, {
       method: 'POST',
       headers: runnerHeaders,
-      body: JSON.stringify({ taskId: msgId2, status: 'completed', content: 'ok2', writeBack: false }),
+      body: JSON.stringify({
+        taskId: msgId2,
+        leaseToken: second.leaseToken,
+        resultId: `result-completed-${randomUUID()}`,
+        status: 'completed',
+        content: 'ok2',
+        writeBack: false,
+      }),
     });
 
     // TTL: force stale last_seen

@@ -9,11 +9,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import vm from 'node:vm';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const root = path.resolve(__dirname, '..');
-const _sdk = await import(path.join(root, 'apps/workpet/ui/connecterApi.js'));
-const { createConnecterClient } = _sdk.default || _sdk;
+const sdkSandbox = { self: {}, fetch, URL, AbortController, setTimeout, clearTimeout };
+vm.runInNewContext(fs.readFileSync(path.join(root, 'apps/workpet/ui/connecterApi.js'), 'utf8'), sdkSandbox, { filename: 'connecterApi.js' });
+const { createConnecterClient } = sdkSandbox.self.ConnecterClient;
 
 const BASE = process.env.WORKPET_BASE_URL || 'http://127.0.0.1:80';
 

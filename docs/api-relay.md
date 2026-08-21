@@ -1,8 +1,8 @@
 # Connecter Relay API（对外契约）
 
-> 状态：**P0.2 冻结（2026-08-07）**；**WorkPet 群控制台冻结（2026-08-19）** — 与当前实现一致  
-> 命名（2026-08-19）：本 API 是 **Connecter**（站点）的 pet/ops/runner 面。**Connecter Host** 是另一角色（Connecter↔Connecter，协议未开）。单站合署时桌宠打的仍是 Connecter。规格：`docs/superpowers/specs/2026-08-19-connecter-host-naming-design.md`。  
-> Base URL：开发 `http://<host>:9080`；生产经 nginx `http://<host>/v1/...`（同路径）  
+> 状态：**P0.2 冻结（2026-08-07）**；**WorkPet 群控制台冻结（2026-08-19）** — 与当前实现一致
+> 命名（2026-08-19）：本 API 是 **Connecter**（站点）的 pet/ops/runner 面。**Connecter Host** 是另一角色（Connecter↔Connecter，协议未开）。单站合署时桌宠打的仍是 Connecter。规格：`docs/superpowers/specs/2026-08-19-connecter-host-naming-design.md`。
+> Base URL：开发 `http://<host>:9080`；生产经 nginx `http://<host>/v1/...`（同路径）
 > 规范交叉：`docs/workconnector-system-design.md` · N1 配置注册 · N2 轮询 · N3 SQLite · `docs/superpowers/specs/2026-08-19-workpet-group-console-design.md`
 
 ## 1. 通则
@@ -75,7 +75,7 @@ WorkPet 用 WP 用户名密码登录。Connecter 代登当前 env 的 WP，签�
 
 **Body** `{ "username": "<WP>", "password": "<WP>", "env": "canary" }`
 
-**200** `{ "token", "petId", "username", "userId", "env" }`  
+**200** `{ "token", "petId", "username", "userId", "env" }`
 **400** 缺字段 · **401** `LOGIN_FAILED` · **403** `PROD_FORBIDDEN`
 
 ### `GET /v1/envs`
@@ -103,7 +103,7 @@ WorkPet 不下发 prod。桌宠不扫描局域网。
 
 本机/旁路 WP **出站**登记槽位（覆盖同名静态 backend 的 baseUrl）。TTL 默认 90s（`wpSlotHeartbeatTtlSec`）。
 
-**Body** `{ "name": "canary", "baseUrl": "http://127.0.0.1:8082", "kind": "workpanel", "auth": { "username": "...", "password": "..." } }`  
+**Body** `{ "name": "canary", "baseUrl": "http://127.0.0.1:8082", "kind": "workpanel", "auth": { "username": "...", "password": "..." } }`
 `auth` 可省略（沿用该槽已登记或 `relay.json` 门面账号）。禁止 `name=prod`。
 
 **200** `{ "ok": true, "slot": { "name", "baseUrl", "kind" } }`
@@ -135,7 +135,7 @@ WorkPet 不下发 prod。桌宠不扫描局域网。
 }
 ```
 
-WP 若无 `unreadCount` 则字段省略。  
+WP 若无 `unreadCount` 则字段省略。
 **502** `{ "error": "…", "code": "WP_GROUPS_FAILED" }` · **403** ops / `PROD_FORBIDDEN` · **429** console 限流。
 
 ### `GET /v1/groups/:id?env=`（pet · 群控制台）
@@ -161,9 +161,9 @@ WP 若无 `unreadCount` 则字段省略。
 }
 ```
 
-`online`：`kind=agent` 时等于 `isActive`；`kind=user` 时 `id` 或 `userId` ∈ presence `onlineUserIds`。presence 失败则用户 `online` 全为 `false`，仍返回成员列表。  
-`coordinatorAgent`：与 chat 相同的 isActive 规则——`defaults.coordinatorAgentName` 须在群内且 `kind=agent && isActive`，否则取第一个活跃 agent。  
-群不存在或不在门面可见范围 → **404**。  
+`online`：`kind=agent` 时等于 `isActive`；`kind=user` 时 `id` 或 `userId` ∈ presence `onlineUserIds`。presence 失败则用户 `online` 全为 `false`，仍返回成员列表。
+`coordinatorAgent`：与 chat 相同的 isActive 规则——`defaults.coordinatorAgentName` 须在群内且 `kind=agent && isActive`，否则取第一个活跃 agent。
+群不存在或不在门面可见范围 → **404**。
 **502** `WP_GROUPS_FAILED` · **403** ops / `PROD_FORBIDDEN`。
 
 ### `GET /v1/groups/:id/messages?env=&limit=`（pet · 群控制台）
@@ -195,7 +195,7 @@ WP 若无 `unreadCount` 则字段省略。
 | `petDisplayName` | 正文含戳记行 `【WorkPet:{petName}】` 时为戳记名，否则 `null` |
 | `contentDisplay` | 去掉戳记行后的正文，供桌宠渲染 |
 
-群不存在或不在门面可见范围 → **404**。  
+群不存在或不在门面可见范围 → **404**。
 **502** `WP_GROUPS_FAILED` · **403** ops / `PROD_FORBIDDEN`。
 
 > 此接口是 WorkPet 展开面板的主 transcript；**不是** G10 ack 轮询（ack 仍走 `GET /v1/messages`）。
@@ -217,9 +217,9 @@ WP 若无 `unreadCount` 则字段省略。
 
 **@ 与管理员（pet）**
 
-1. 从 `prompt` 按群成员 `displayName` 最长匹配 `@`（`@` 前须为空或空白）；命中须为 `kind=agent`，否则 **400** `UNKNOWN_MENTION`（不转发 WP）。  
-2. 无 `@`：只投递群 `adminMemberId` 且该成员为在线 Agent；否则 **400** `NO_ADMIN`（不再回落到「任意第一个 Agent」）。  
-3. 发送身份：`pets[].wpAuth` 登录的 WP 用户（绑定 `authUserId`）；省略则回落门面 `backends.*.auth`。  
+1. 从 `prompt` 按群成员 `displayName` 最长匹配 `@`（`@` 前须为空或空白）；命中须为 `kind=agent`，否则 **400** `UNKNOWN_MENTION`（不转发 WP）。
+2. 无 `@`：只投递群 `adminMemberId` 且该成员为在线 Agent；否则 **400** `NO_ADMIN`（不再回落到「任意第一个 Agent」）。
+3. 发送身份：`pets[].wpAuth` 登录的 WP 用户（绑定 `authUserId`）；省略则回落门面 `backends.*.auth`。
 4. 转发 WP 的正文形如：`@{agent}\n【WorkPet:{petName}】\n{rest}`。
 
 **Pet 成功 200**
@@ -240,8 +240,8 @@ WP 若无 `unreadCount` 则字段省略。
 
 `coordinatorAgent` = 实际投递的 Agent。`mentionedAgent` = 正文里 `@` 命中的 Agent，无 `@` 时为 `null`。
 
-**幂等重放 200**：同 `id` 已存在 → `idempotent: true`，不二次转发 WP。  
-**投递失败**：可能 **502**（已死信，或 WP 群代理失败 `WP_GROUPS_FAILED`）或 **202**（仍 accepted 待续投）。  
+**幂等重放 200**：同 `id` 已存在 → `idempotent: true`，不二次转发 WP。
+**投递失败**：可能 **502**（已死信，或 WP 群代理失败 `WP_GROUPS_FAILED`）或 **202**（仍 accepted 待续投）。
 **403** `PROD_FORBIDDEN` · **401** 无/坏 token · **429** chat 限流 · **400** 缺 prompt / `UNKNOWN_MENTION` / `NO_ADMIN` / 无匹配群。
 
 ### `GET /v1/messages?since=&group=&env=&agent=&limit=`
@@ -305,7 +305,7 @@ WP 若无 `unreadCount` 则字段省略。
 
 `wpAuth` = 该桌宠对应的 **WP 用户**（群里 `kind=user` 且 `authUserId` 已绑定）。省略时回落 `backends.*.auth` 门面账号。WorkPet **不**直连 WP：登录走 `POST /v1/auth/login`，之后只用 pet token。
 
-启动时 upsert `pets` / `agent_instances` / `sessions`。动态 `POST /v1/register` = 二期。  
+启动时 upsert `pets` / `agent_instances` / `sessions`。动态 `POST /v1/register` = 二期。
 `pets[].groups` 仍是默认值班绑定；**不**扩大可见范围。可见范围见 §1.3 G11（自己所在的群）。
 
 `GET /v1/members`：`selfMemberId` + 成员 `self` / `online`（用户在线来自 WP `GET /api/presence`；Pet 心跳 `POST /api/presence/heartbeat`）。展开面板主路径仍是 `GET /v1/groups*`。
@@ -316,17 +316,17 @@ WP 若无 `unreadCount` 则字段省略。
 
 **收起态 / ack 调度（G10，不变）**
 
-1. `GET /v1/health`  
-2. `POST /v1/chat`（带稳定 `id`）  
-3. 循环 `GET /v1/messages?since=<cursor>&group=…` 直到看到 down ack 或超时  
-4. 可选 `GET /v1/runs/<runId>`  
+1. `GET /v1/health`
+2. `POST /v1/chat`（带稳定 `id`）
+3. 循环 `GET /v1/messages?since=<cursor>&group=…` 直到看到 down ack 或超时
+4. 可选 `GET /v1/runs/<runId>`
 
 **展开面板 / 群控制台（P2.4）**
 
-0. `POST /v1/auth/login`（未登录不拉群）  
-1. `GET /v1/groups?env=` 填群下拉（仅自己所在的群）  
-2. `GET /v1/groups/:id` 成员 + 在线；`GET /v1/groups/:id/messages` 为主 transcript（约 2s 轮询）  
-3. 发送仍走扩展后的 `POST /v1/chat`（`petName`、可选 `@Agent`）；ack 仍可另轮询 `GET /v1/messages`  
+0. `POST /v1/auth/login`（未登录不拉群）
+1. `GET /v1/groups?env=` 填群下拉（仅自己所在的群）
+2. `GET /v1/groups/:id` 成员 + 在线；`GET /v1/groups/:id/messages` 为主 transcript（约 2s 轮询）
+3. 发送仍走扩展后的 `POST /v1/chat`（`petName`、可选 `@Agent`）；ack 仍可另轮询 `GET /v1/messages`
 
 示例见根 `README.md`；配置样例 `docs/workpet-config-sample.md` / `apps/workpet/config.example.json`。
 
@@ -362,7 +362,19 @@ WP 若无 `unreadCount` 则字段省略。
 
 ## 6. 非目标（本契约版本）
 
-- WebSocket、WP→Connecter 回调、动态注册审批  
-- Connecter 业务网页  
-- 保证 Agent 自然语言全文已在 `/v1/messages`（仅保证调度受理与 ack）  
-- WP Pet 成员身份 / WorkPet 登录（G12 · 见 NEXT **P2.5**，本期不实现）  
+- WebSocket、WP→Connecter 回调、动态注册审批
+- Connecter 业务网页
+- 保证 Agent 自然语言全文已在 `/v1/messages`（仅保证调度受理与 ack）
+- WP Pet 成员身份 / WorkPet 登录（G12 · 见 NEXT **P2.5**，本期不实现）
+# P3 federation operations
+
+All endpoints below require an ops bearer token.
+
+- `GET /v1/ops/federation/policies?status=&limit=` lists active or disabled rules without credentials or message payloads.
+- `POST /v1/ops/federation/policies` creates a rule with `originSite`, `targetSite`, `groupRef`, optional `subjectId`, `operation`, `direction`, `capability`, `dataClassification`, `effect`, and `version`.
+- `POST /v1/ops/federation/policies/:id/disable` disables a rule without deleting its history.
+- `POST /v1/ops/host/peers/:siteId/revoke` immediately revokes a registered Site credential and prevents config-based re-registration.
+- `POST /v1/ops/host/peers/:siteId/rotate` accepts `{ "token": "..." }`, invalidates the old bearer and requires the Site to switch to the new credential. Both operations are audited; token bodies are redacted.
+- `GET /v1/ops/security/deliveries?siteId=&keyId=&status=&since=&until=&limit=` returns the affected-delivery inventory for incident response.
+- `GET /v1/ops/health/detail` returns queue, lease, retry, dead-letter, ACL, latency and WorkPanel write-back metrics.
+- `GET /v1/ops/traces/:traceId` returns route, audit and telemetry records across the live and archived audit sets.

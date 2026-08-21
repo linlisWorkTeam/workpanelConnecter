@@ -1,7 +1,7 @@
 import { listPendingAccepted, db } from './db.js';
 import { markDelivered, markFailed } from './messaging.js';
 import { dispatchWorkPanel, serverForPet } from '../workpanelClient.js';
-import { enqueueRunnerTask, findRunnerBinding, isRunnerHeartbeatFresh, runnerHeartbeatTtlSec } from './runners.js';
+import { dispatchToRunnerIfBound } from './services/dispatchService.js';
 
 function sleep(ms) {
   return new Promise((r) => setTimeout(r, ms));
@@ -31,26 +31,19 @@ export async function deliverOnce(config, messageRow) {
   }
 
   const targetAgentName = envelope.to?.id || instance.agent_name;
-  const binding = findRunnerBinding({
-    ...instance,
-    agent_name: targetAgentName,
+  const runnerDispatch = await dispatchToRunnerIfBound(config, {
+    instance,
+    targetAgentName,
+    upMessage: messageRow,
+    content: envelope.payload?.content || '',
+    context: { source: 'delivery' },
   });
-  if (binding) {
-    if (!isRunnerHeartbeatFresh(binding, runnerHeartbeatTtlSec(config))) {
+  if (runnerDispatch.matched) {
+    if (!runnerDispatch.ok) {
       await markFailed(messageRow.id, 'runner_offline', 3);
       return { ok: false, error: 'runner_offline' };
     }
-    const task = await enqueueRunnerTask({
-      runnerId: binding.runner_id,
-      channelId: binding.channel_id,
-      env: instance.env,
-      groupId: instance.group_id,
-      groupName: instance.group_name,
-      agentName: targetAgentName,
-      upMessage: messageRow,
-      content: envelope.payload?.content || '',
-    });
-    return { ok: true, runIds: [task.id], runner: true };
+    return { ok: true, runIds: [runnerDispatch.task.id], runner: true };
   }
 
 

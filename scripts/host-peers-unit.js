@@ -35,6 +35,19 @@ try {
   assert.equal(health.host.role, 'host');
   assert.equal(health.host.linked, true);
 
+  for (const [method, pathname, body] of [
+    ['POST', '/v1/agents/register', { agentId: 'forbidden', token: 'forbidden' }],
+    ['POST', '/v1/chat', { prompt: 'forbidden' }],
+    ['POST', '/v1/auth/login', { username: 'forbidden', password: 'forbidden' }],
+    ['GET', '/v1/groups', undefined],
+  ]) {
+    const response = await fetch(`${base}${pathname}`, {
+      method, headers: { authorization: `Bearer ${OPS}`, 'content-type': 'application/json' },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+    assert.equal(response.status, 404, `${method} ${pathname} must not exist on Connecter Host`);
+  }
+
   const denied = await fetch(`${base}/v1/host/peers/register`, {
     method: 'POST',
     headers: { 'content-type': 'application/json' },
@@ -64,6 +77,41 @@ try {
   const peer = (listed.peers || []).find((p) => p.siteId === 'windows-dev');
   assert.ok(peer, JSON.stringify(listed));
   assert.equal(peer.linked, true);
+
+  const revoked = await fetch(`${base}/v1/ops/host/peers/windows-dev/revoke`, {
+    method: 'POST', headers: { authorization: `Bearer ${OPS}`, 'content-type': 'application/json' }, body: '{}',
+  });
+  assert.equal(revoked.status, 200, await revoked.text());
+  const rejectedBeat = await fetch(`${base}/v1/host/peers/heartbeat`, {
+    method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: '{}',
+  });
+  assert.equal(rejectedBeat.status, 401);
+  const rejectedRegister = await fetch(`${base}/v1/host/peers/register`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ siteId: 'windows-dev', token: TOKEN }),
+  });
+  assert.equal(rejectedRegister.status, 403);
+
+  const NEXT_TOKEN = 'peer-token-rotated-windows-dev';
+  const rotated = await fetch(`${base}/v1/ops/host/peers/windows-dev/rotate`, {
+    method: 'POST', headers: { authorization: `Bearer ${OPS}`, 'content-type': 'application/json' }, body: JSON.stringify({ token: NEXT_TOKEN }),
+  });
+  assert.equal(rotated.status, 200, await rotated.text());
+  const oldDenied = await fetch(`${base}/v1/host/peers/heartbeat`, {
+    method: 'POST', headers: { authorization: `Bearer ${TOKEN}`, 'content-type': 'application/json' }, body: '{}',
+  });
+  assert.equal(oldDenied.status, 401);
+  const oldRegisterDenied = await fetch(`${base}/v1/host/peers/register`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ siteId: 'windows-dev', token: TOKEN }),
+  });
+  assert.equal(oldRegisterDenied.status, 401);
+  const nextRegister = await fetch(`${base}/v1/host/peers/register`, {
+    method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ siteId: 'windows-dev', token: NEXT_TOKEN }),
+  });
+  assert.equal(nextRegister.status, 200, await nextRegister.text());
+  const nextBeat = await fetch(`${base}/v1/host/peers/heartbeat`, {
+    method: 'POST', headers: { authorization: `Bearer ${NEXT_TOKEN}`, 'content-type': 'application/json' }, body: '{}',
+  });
+  assert.equal(nextBeat.status, 200, await nextBeat.text());
   console.log('HOST_PEERS_UNIT_OK');
 } finally {
   stopHostJoin();

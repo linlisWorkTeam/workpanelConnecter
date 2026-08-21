@@ -13,6 +13,7 @@
  */
 import fs from 'node:fs';
 import path from 'node:path';
+import { randomUUID } from 'node:crypto';
 import { ROOT } from '../src/config.js';
 import {
   dispatchWorkPanel,
@@ -112,6 +113,15 @@ async function main() {
     const pulled = await jsonFetch(`${base}/v1/agents/tasks`, { method: 'POST', headers, body: '{}' });
     const tasks = pulled.body?.tasks || [];
     for (const task of tasks) {
+      const ack = await jsonFetch(`${base}/v1/agents/tasks/ack`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ taskId: task.taskId, leaseToken: task.leaseToken }),
+      });
+      if (ack.status !== 200) {
+        console.warn(`[wp-runner] ack rejected task=${task.taskId} HTTP ${ack.status}`);
+        continue;
+      }
       const env = task.env || config.defaults?.env || 'canary';
       const backend = config.backends?.[env];
       if (!backend || /:8080\b/.test(backend.baseUrl || '')) {
@@ -120,6 +130,8 @@ async function main() {
           headers,
           body: JSON.stringify({
             taskId: task.taskId,
+            leaseToken: task.leaseToken,
+            resultId: `result_${randomUUID()}`,
             status: 'failed',
             content: 'refused: missing canary backend or prod :8080',
             writeBack: false,
@@ -144,6 +156,8 @@ async function main() {
         headers,
         body: JSON.stringify({
           taskId: task.taskId,
+          leaseToken: task.leaseToken,
+          resultId: `result_${randomUUID()}`,
           status: 'running',
           content: dispatched.ok
             ? `wp_accepted messageId=${wpMessageId || ''} runId=${runId || ''}`
@@ -157,6 +171,8 @@ async function main() {
           headers,
           body: JSON.stringify({
             taskId: task.taskId,
+            leaseToken: task.leaseToken,
+            resultId: `result_${randomUUID()}`,
             status: 'failed',
             content: dispatched.error || 'wp dispatch failed',
             writeBack: false,
@@ -169,11 +185,18 @@ async function main() {
         pollMs,
         afterTs: Date.now() - 5000,
       });
+      await jsonFetch(`${base}/v1/agents/tasks/renew`, {
+        method: 'POST',
+        headers,
+        body: JSON.stringify({ taskId: task.taskId, leaseToken: task.leaseToken }),
+      });
       await jsonFetch(`${base}/v1/agents/tasks/result`, {
         method: 'POST',
         headers,
         body: JSON.stringify({
           taskId: task.taskId,
+          leaseToken: task.leaseToken,
+          resultId: `result_${randomUUID()}`,
           status: reply.ok ? 'completed' : 'failed',
           content: reply.ok ? reply.text : `timeout waiting WP agent reply (wpMessageId=${wpMessageId})`,
           writeBack: false,

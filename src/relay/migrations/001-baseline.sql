@@ -1,0 +1,2 @@
+-- Baseline marker for databases created before versioned migrations.
+-- Fresh databases are created from ../schema.sql, which is the latest schema snapshot.

@@ -459,7 +459,7 @@ export async function postAsAgent(server, { groupId, agentName, content, timeout
     method: 'POST',
     token,
     timeoutMs,
-    body: { groupId, senderMemberId: memberId, content },
+    body: { groupId, senderMemberId: memberId, content, mentionMemberIds: [] },
   });
   return { ok: res.ok, status: res.status, body: res.json };
 }

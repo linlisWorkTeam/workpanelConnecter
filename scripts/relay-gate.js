@@ -6,6 +6,7 @@ import path from 'node:path';
 import fs from 'node:fs';
 import os from 'node:os';
 import { randomUUID } from 'node:crypto';
+import { spawn } from 'node:child_process';
 import { ROOT } from '../src/config.js';
 import { listenRelay, closeDb } from '../src/relay/server.js';
 
@@ -19,12 +20,37 @@ async function jsonFetch(url, opts = {}) {
   return { status: res.status, body };
 }
 
+async function waitUrl(url, child, timeoutMs = 10000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    if (child.exitCode !== null) throw new Error(`mock WP exited early: ${child.exitCode}`);
+    try {
+      const response = await fetch(url);
+      if (response.ok) return;
+    } catch {
+      /* retry */
+    }
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+  throw new Error(`timeout waiting for ${url}`);
+}
+
+function stopChild(child) {
+  return new Promise((resolve) => {
+    if (!child || child.exitCode !== null) return resolve();
+    child.once('exit', resolve);
+    child.kill('SIGTERM');
+  });
+}
+
 async function main() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'connecter-relay15-'));
   const dbPath = path.join(tmp, 'connector.db');
   const cfgPath = path.join(tmp, 'relay.json');
   // 专用测试端口：9080 已被生产 systemd 服务占用，门禁自起实例用 9095
   const PORT = Number(process.env.CONNECTER_RELAY_PORT || 9095);
+  const WP_PORT = 18082;
+  const DEAD_WP_PORT = 18083;
   const PET_TOKEN = 'gate-pet-token';
   const OPS_TOKEN = 'gate-ops-token';
 
@@ -36,7 +62,7 @@ async function main() {
     rateLimitPerMin: 120,
     backends: {
       canary: {
-        baseUrl: 'http://127.0.0.1:8081',
+        baseUrl: `http://127.0.0.1:${WP_PORT}`,
         kind: 'workpanel',
         auth: { username: 'root', password: 'root' },
       },
@@ -46,7 +72,7 @@ async function main() {
         auth: { username: 'root', password: 'root' },
       },
       dead: {
-        baseUrl: 'http://127.0.0.1:19999',
+        baseUrl: `http://127.0.0.1:${DEAD_WP_PORT}`,
         kind: 'workpanel',
         auth: { username: 'root', password: 'root' },
       },
@@ -96,6 +122,32 @@ async function main() {
   process.env.CONNECTER_RELAY_PORT = String(PORT);
   process.env.CONNECTER_RELAY_HOST = '127.0.0.1';
 
+  const mockWp = spawn(process.execPath, ['mock/workpanel-server.js'], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      PORT: String(WP_PORT),
+      GATE_GROUP_ID: '528b36ba-4769-4b4d-9fa8-51e2de132396',
+      GATE_GROUP_NAME: '灰度测试',
+      COORDINATOR_NAME: 'Cursor Agent',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  const deadMockWp = spawn(process.execPath, ['mock/workpanel-server.js'], {
+    cwd: ROOT,
+    env: {
+      ...process.env,
+      PORT: String(DEAD_WP_PORT),
+      GROUP_ID: 'anywhere',
+      GROUP_NAME: 'anywhere',
+      COORDINATOR_NAME: 'Cursor Agent',
+      FAIL_MESSAGES: '1',
+    },
+    stdio: ['ignore', 'pipe', 'pipe'],
+  });
+  await waitUrl(`http://127.0.0.1:${WP_PORT}/api/health`, mockWp);
+  await waitUrl(`http://127.0.0.1:${DEAD_WP_PORT}/api/health`, deadMockWp);
+
   const { server } = await listenRelay({
     configPath: cfgPath,
     dbPath,
@@ -140,7 +192,7 @@ async function main() {
     });
     if (chat.status !== 200 || chat.body.status !== 'accepted') {
       console.error(chat);
-      throw new Error('canary chat failed — is WP :8081 up? ' + (chat.body?.error || ''));
+      throw new Error('canary chat failed: ' + (chat.body?.error || ''));
     }
     assert(chat.body.messageId === msgId, 'messageId echo');
     assert(Array.isArray(chat.body.runIds), 'runIds');
@@ -177,10 +229,15 @@ async function main() {
       },
       body: JSON.stringify({
         id: `msg_dead_${randomUUID()}`,
+        env: 'dead',
+        group: 'anywhere',
         prompt: 'should fail',
       }),
     });
-    assert(dead.status === 502 || dead.body.status === 'failed', 'dead letter failed');
+    assert(
+      dead.status === 502 || dead.body.status === 'failed',
+      `dead letter failed: HTTP ${dead.status} ${JSON.stringify(dead.body)}`
+    );
 
     // revoke
     const rev = await jsonFetch(`${base}/v1/session/revoke`, {
@@ -202,15 +259,18 @@ async function main() {
           messageId: msgId,
           runIds: chat.body.runIds,
           instances: inst.body.instances.length,
-          note: 'sqlite+config pets+poll+idempotent+deadletter+revoke; canary live',
+          note: 'sqlite+config pets+poll+idempotent+deadletter+revoke; local WP mock',
         },
         null,
         2
       )
     );
   } finally {
-    server.close();
+    await new Promise((resolve) => server.close(resolve));
+    await stopChild(mockWp);
+    await stopChild(deadMockWp);
     closeDb();
+    fs.rmSync(tmp, { recursive: true, force: true });
   }
 }
 

@@ -30,27 +30,45 @@ import {
   ensureAgentInstance,
   issueLoginPet,
 } from './registry.js';
-import { acceptUpMessage, pollMessages } from './messaging.js';
+import { acceptMessage, pollMessageFeed } from './services/messageService.js';
 import { pickAdminAgent } from './mentions.js';
 import { deliverWithRetry } from './delivery.js';
-import { db, getRun, getMessageById } from './db.js';
+import { db, getRun, getMessageById, upsertRun } from './db.js';
 import { formatPetStamp } from './petStamp.js';
 import {
   registerRunner,
   heartbeatRunner,
   pollRunnerTasks,
+  acknowledgeRunnerTask,
+  renewRunnerTask,
   asAgentTasksResult,
   submitRunnerTaskResult,
-  listRunnerBindings,
-  findRunnerBinding,
-  enqueueRunnerTask,
   postRunnerResultToGroup,
-  isRunnerHeartbeatFresh,
-  runnerHeartbeatTtlSec,
 } from './runners.js';
-import { hostRole, registerHostPeer, heartbeatHostPeer, listHostPeers } from './hostPeers.js';
+import { hostRole, registerHostPeer, heartbeatHostPeer, listHostPeers, revokeHostPeer, rotateHostPeerToken } from './hostPeers.js';
 import { hostJoinState } from './hostJoin.js';
 import { setSessionWpAuth } from './sessionWpAuth.js';
+import { listTasks, requeueTask, cancelTask } from './services/taskQueueService.js';
+import { dispatchToRunnerIfBound } from './services/dispatchService.js';
+import { listRunnerDirectory } from './services/directoryService.js';
+import { projectWpGroupMembers } from './directory.js';
+import {
+  approveEnrollment,
+  createEnrollment,
+  listEnrollments,
+  rejectEnrollment,
+  rotateCredential,
+} from './enrollment.js';
+import { revokeCredential } from './credentialStore.js';
+import { enqueueFederationRunEvent, federationBacklogState, flushFederationOutboxOnce, listFederationOutbox, requeueFederationOutbox } from './services/federationService.js';
+import { appendAudit } from './auditLog.js';
+import { listSecurityDeliveries, operationalHealthDetail, traceTimeline } from './telemetry.js';
+import { createFederationPolicy, disableFederationPolicy, listFederationPolicies } from './handlers/policyHandlers.js';
+import { directoryEndpointsHandler, directorySubjectsHandler, routeExplainHandler } from './handlers/directoryHandlers.js';
+import {
+  federationAcceptHandler, federationAckHandler, federationAdvertiseHandler,
+  federationCompleteHandler, federationDirectoryHandler, federationPullHandler,
+} from './handlers/federationHostHandlers.js';
 
 function backendAsServer(backend) {
   return {
@@ -104,8 +122,10 @@ export function createHandlers({ config }) {
           host: {
             role: hostRole(config),
             linked: join.linked,
+            controlLinked: join.controlLinked,
             siteId: join.siteId,
             lastError: join.lastError,
+            federation: { ...join.federation, ...federationBacklogState() },
           },
         },
       };
@@ -254,6 +274,11 @@ export function createHandlers({ config }) {
       const presence = await wpGetPresence(gate.server);
       const onlineUserIds = presence.ok ? presence.onlineUserIds : [];
       const members = got.members || [];
+      try {
+        await projectWpGroupMembers(config, got.group?.id || id, members, onlineUserIds);
+      } catch {
+        // Direct handler unit use may not bootstrap SQLite; group proxy remains available.
+      }
       const me = pickSender(got.group, members, { userId: session.userId });
       const admin = pickAdminAgent(got.group, members);
       return {
@@ -376,7 +401,7 @@ export function createHandlers({ config }) {
         const mentionedAgent = target.mentioned ? target.agent.displayName : null;
         const coordinatorAgent = target.agent.displayName;
 
-        const accepted = await acceptUpMessage({
+        const accepted = await acceptMessage({
           messageId: body.id,
           agentInstance: instance,
           petId: auth.petId,
@@ -413,32 +438,35 @@ export function createHandlers({ config }) {
         }
 
           // E2: runner-bound target -> enqueue (must have fresh heartbeat)
-          const runnerBinding = findRunnerBinding({
-            env: instance.env,
-            group_id: instance.group_id,
-            agent_name: target.agent.displayName,
+          const runnerDispatch = await dispatchToRunnerIfBound(config, {
+            instance,
+            targetAgentName: target.agent.displayName,
+            upMessage: accepted.message,
+            content: target.rest,
+            context: { source: 'pet-chat' },
           });
-          if (runnerBinding) {
-            if (!isRunnerHeartbeatFresh(runnerBinding, runnerHeartbeatTtlSec(config))) {
+          if (runnerDispatch.matched) {
+            if (!runnerDispatch.ok) {
               return {
                 status: 503,
                 body: {
                   error: 'runner_offline',
-                  runner: { agentId: runnerBinding.runner_id, channelId: runnerBinding.channel_id },
+                  runner: {
+                    agentId: runnerDispatch.binding.runner_id,
+                    channelId: runnerDispatch.binding.channel_id,
+                  },
                 },
               };
             }
-            const task = await enqueueRunnerTask({
-              runnerId: runnerBinding.runner_id,
-              channelId: runnerBinding.channel_id,
-              env: instance.env,
-              groupId: instance.group_id,
-              groupName: instance.group_name,
-              agentName: target.agent.displayName,
-              upMessage: accepted.message,
-              content: target.rest,
-              context: { source: 'pet-chat' },
-            });
+            if (runnerDispatch.remote) {
+              upsertRun(db(), {
+                id: runnerDispatch.task.id,
+                message_id: accepted.message.id,
+                agent_instance_id: accepted.message.agent_instance_id,
+                status: 'queued',
+                detail_json: JSON.stringify({ traceId: runnerDispatch.routeDecision?.traceId, targetSite: runnerDispatch.binding.target_site }),
+              });
+            }
             return {
               status: 200,
               body: {
@@ -446,11 +474,15 @@ export function createHandlers({ config }) {
                 env: instance.env,
                 messageId: accepted.envelope.id,
                 seq: accepted.message.seq,
-                runIds: [task.id],
+                runIds: [runnerDispatch.task.id],
                 group: instance.group_id,
                 coordinatorAgent,
                 mentionedAgent,
-                runner: { agentId: runnerBinding.runner_id, channelId: runnerBinding.channel_id },
+                runner: {
+                  agentId: runnerDispatch.binding.runner_id,
+                  channelId: runnerDispatch.binding.channel_id,
+                },
+                traceId: runnerDispatch.routeDecision?.traceId || null,
               },
             };
           }
@@ -597,7 +629,7 @@ export function createHandlers({ config }) {
       if (!instance) {
         return { status: 400, body: { error: 'no matching agent_instance' } };
       }
-      const items = pollMessages(instance.id, since, limit);
+      const items = pollMessageFeed(instance.id, since, limit);
       const nextCursor = items.length ? items[items.length - 1].seq : Number(since) || 0;
       return {
         status: 200,
@@ -645,19 +677,78 @@ export function createHandlers({ config }) {
         return registerRunner(config, body);
       },
 
-      agentHeartbeat(auth) {
+      agentHeartbeat(auth, body = {}) {
         if (auth.kind !== 'runner') {
           return { status: 403, body: { error: 'runner token required' } };
         }
-        return { status: 200, body: heartbeatRunner(auth.runner) };
+        return { status: 200, body: heartbeatRunner(config, auth.runner, body) };
       },
 
       async agentTasks(auth, { limit }) {
         if (auth.kind !== 'runner') {
           return { status: 403, body: { error: 'runner token required' } };
         }
-        const pulled = await pollRunnerTasks(auth.runner, { limit });
+        const pulled = await pollRunnerTasks(config, auth.runner, { limit });
         return asAgentTasksResult(pulled);
+      },
+
+      enrollmentCreate(body) {
+        return createEnrollment(config, body);
+      },
+
+      enrollmentList(auth, query) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        return { status: 200, body: { enrollments: listEnrollments(query) } };
+      },
+
+      enrollmentApprove(auth, enrollmentId, body) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        return approveEnrollment(config, enrollmentId, body, 'ops').then((result) => {
+          appendAudit({ eventType: 'enrollment.approve', outcome: result.status === 200 ? 'allow' : 'deny', actor: 'ops', detail: { enrollmentId } });
+          return result;
+        });
+      },
+
+      enrollmentReject(auth, enrollmentId) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        const result = rejectEnrollment(enrollmentId, 'ops');
+        appendAudit({ eventType: 'enrollment.reject', outcome: result.status === 200 ? 'allow' : 'deny', actor: 'ops', detail: { enrollmentId } });
+        return result;
+      },
+
+      credentialRotate(auth) {
+        if (auth.kind !== 'runner' || !auth.credential) {
+          return { status: 403, body: { error: 'device credential required' } };
+        }
+        return rotateCredential(config, auth.credential).then((result) => {
+          appendAudit({ eventType: 'credential.rotate', outcome: result.status === 200 ? 'allow' : 'deny',
+            actor: auth.credential.subject_id, subjectId: auth.credential.subject_id,
+            detail: { credentialId: auth.credential.id } });
+          return result;
+        });
+      },
+
+      credentialRevoke(auth, credentialId) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        const revoked = revokeCredential(credentialId);
+        appendAudit({ eventType: 'credential.revoke', outcome: revoked ? 'allow' : 'deny', actor: 'ops', detail: { credentialId } });
+        return revoked
+          ? { status: 200, body: { ok: true, credentialId, status: 'revoked' } }
+          : { status: 404, body: { error: 'active credential not found' } };
+      },
+
+      async agentTaskAck(auth, body) {
+        if (auth.kind !== 'runner') {
+          return { status: 403, body: { error: 'runner token required' } };
+        }
+        return acknowledgeRunnerTask(config, auth.runner, body);
+      },
+
+      async agentTaskRenew(auth, body) {
+        if (auth.kind !== 'runner') {
+          return { status: 403, body: { error: 'runner token required' } };
+        }
+        return renewRunnerTask(config, auth.runner, body);
       },
 
       async agentTaskResult(auth, body) {
@@ -665,8 +756,13 @@ export function createHandlers({ config }) {
           return { status: 403, body: { error: 'runner token required' } };
         }
         const r = await submitRunnerTaskResult(config, auth.runner, body);
+        if (r?.status === 200 && !r?.body?.duplicate && r?.body?.federation && ['completed', 'failed', 'cancelled'].includes(r.body.status)) {
+          const task = db().prepare(`SELECT * FROM runner_tasks WHERE id=?`).get(body.taskId);
+          await enqueueFederationRunEvent(config, task, body);
+          await flushFederationOutboxOnce(config).catch(() => {});
+        }
         // E2: best-effort write-back into the WP group thread (as the agent)
-        if (r?.status === 200 && r?.body?.status === 'completed' && body.writeBack !== false) {
+        if (r?.status === 200 && !r?.body?.duplicate && r?.body?.status === 'completed' && body.writeBack !== false) {
           postRunnerResultToGroup(config, auth.runner, body).catch(() => {});
         }
         return r;
@@ -676,7 +772,44 @@ export function createHandlers({ config }) {
         if (auth.kind !== 'ops') {
           return { status: 403, body: { error: 'ops token required' } };
         }
-        return { status: 200, body: { agents: listRunnerBindings({ env, group }) } };
+        return { status: 200, body: { agents: listRunnerDirectory({ env, group }) } };
+      },
+
+      opsTasks(auth, query) {
+        if (auth.kind !== 'ops') {
+          return { status: 403, body: { error: 'ops token required' } };
+        }
+        return { status: 200, body: { tasks: listTasks(query) } };
+      },
+
+      directorySubjects(auth, query) {
+        return directorySubjectsHandler(auth, query);
+      },
+
+      directoryEndpoints(auth, query) {
+        return directoryEndpointsHandler(auth, query);
+      },
+
+      routeExplain(auth, query) {
+        return routeExplainHandler(auth, query);
+      },
+
+      opsTaskRequeue(auth, taskId, body) {
+        if (auth.kind !== 'ops') {
+          return { status: 403, body: { error: 'ops token required' } };
+        }
+        const result = requeueTask(taskId, { actor: 'ops', reason: body?.reason });
+        appendAudit({ eventType: 'task.manual_requeue', outcome: 'allow', actor: 'ops', taskId, detail: { reason: body?.reason } });
+        return result;
+      },
+
+      opsTaskCancel(auth, taskId, body) {
+        if (auth.kind !== 'ops') {
+          return { status: 403, body: { error: 'ops token required' } };
+        }
+        const result = cancelTask(taskId, { actor: 'ops', reason: body?.reason });
+        appendAudit({ eventType: 'task.manual_cancel', outcome: 'allow', actor: 'ops', taskId, detail: { reason: body?.reason } });
+        return result;
       },
 
       hostPeerRegister(body) {
@@ -695,6 +828,86 @@ export function createHandlers({ config }) {
           return { status: 403, body: { error: 'ops token required' } };
         }
         return { status: 200, body: { peers: listHostPeers(config) } };
+      },
+
+      hostPeerRevoke(auth, siteId) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        const result = revokeHostPeer(siteId);
+        appendAudit({ eventType: 'host.peer_revoke', outcome: result.status === 200 ? 'allow' : 'deny', actor: 'ops', siteId });
+        return result;
+      },
+
+      hostPeerRotate(auth, siteId, body) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        const result = rotateHostPeerToken(config, siteId, body?.token);
+        appendAudit({ eventType: 'host.peer_rotate', outcome: result.status === 200 ? 'allow' : 'deny', actor: 'ops', siteId });
+        return result;
+      },
+
+      federationAccept(auth, body) {
+        return federationAcceptHandler(config, auth, body);
+      },
+
+      federationPull(auth, body) {
+        return federationPullHandler(config, auth, body);
+      },
+
+      federationAck(auth, body) {
+        return federationAckHandler(config, auth, body);
+      },
+
+      federationComplete(auth, body) {
+        return federationCompleteHandler(config, auth, body);
+      },
+
+      federationAdvertise(auth, body) {
+        return federationAdvertiseHandler(config, auth, body);
+      },
+
+      federationDirectory(auth, query) {
+        return federationDirectoryHandler(config, auth, query);
+      },
+
+      opsHealthDetail(auth) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        return { status: 200, body: { ok: true, metrics: operationalHealthDetail(), host: hostJoinState() } };
+      },
+
+      opsTrace(auth, traceId) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        return { status: 200, body: traceTimeline(traceId) };
+      },
+
+      opsPolicyList(auth, query) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        return { status: 200, body: { policies: listFederationPolicies(query) } };
+      },
+
+      opsPolicyCreate(auth, body) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        return createFederationPolicy(body, { actor: 'ops' });
+      },
+
+      opsPolicyDisable(auth, id) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        return disableFederationPolicy(id, { actor: 'ops' });
+      },
+
+      opsFederationOutbox(auth, query) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        return { status: 200, body: { entries: listFederationOutbox(query) } };
+      },
+
+      async opsFederationOutboxRequeue(auth, id) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        const result = await requeueFederationOutbox(id);
+        appendAudit({ eventType: 'federation.outbox_requeue', outcome: result.status === 200 ? 'allow' : 'deny', actor: 'ops', detail: { id } });
+        return result;
+      },
+
+      opsSecurityDeliveries(auth, query) {
+        if (auth.kind !== 'ops') return { status: 403, body: { error: 'ops token required' } };
+        return { status: 200, body: { deliveries: listSecurityDeliveries(query) } };
       },
   };
 }

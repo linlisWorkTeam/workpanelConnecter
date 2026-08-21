@@ -1,6 +1,6 @@
 # Runner 出站协议（适配层）
 
-> Connecter 只做队列与路由。Runner（`wp-runner`、以后的 dsh、其它 Agent）**只出站**拉任务。  
+> Connecter 只做队列与路由。Runner（`wp-runner`、以后的 dsh、其它 Agent）**只出站**拉任务。
 > 实现：`src/relay/runners.js` · 门禁：`npm run test:runner` · HTTP 总表：`docs/api-relay.md` §5
 
 ## 1. 鉴权
@@ -10,6 +10,8 @@
 | `POST /v1/agents/register` | 匿名；body 里的 `token` 必须等于 `relay.json` → `runners[].token`（该 `agentId` 须已预配） |
 | `POST /v1/agents/heartbeat` | `Authorization: Bearer <同一 runner token>` |
 | `POST /v1/agents/tasks` | 同上 |
+| `POST /v1/agents/tasks/ack` | 同上；必须携带当前 `leaseToken` |
+| `POST /v1/agents/tasks/renew` | 同上；必须携带当前 `leaseToken` |
 | `POST /v1/agents/tasks/result` | 同上 |
 | `GET /v1/agents` | **ops** bearer（`auth.tokens[]`），不是 runner |
 
@@ -20,13 +22,15 @@
 ```text
 预配 runners[] ──► POST /register（幂等 upsert 绑定）
                  ──► 循环：heartbeat（TTL 默认 60s）
-                 ──► POST /tasks  （空数组 = 无活；有则最多 1 条 dispatched）
+                 ──► POST /tasks  （原子领取 lease）
+                 ──► POST /tasks/ack
                  ──► 执行
+                 ──► 长任务定期 POST /tasks/renew
                  ──► POST /tasks/result  running|accepted（可选第一段）
                  ──► POST /tasks/result  completed|failed|cancelled
 ```
 
-同 `runnerId` **最多 1 条 in-flight**（`dispatched` 未终态则 `/tasks` 再拉得到 `tasks: []`）。心跳过期后新 chat **不入队**，对绑定该 runner 的目标返回 **503** `runner_offline`（不静默打云 WP）。
+默认同 `runnerId` 最多 1 条 in-flight；`runners[].maxConcurrency` 可显式提高。领取使用 `runnerTaskLeaseSec`（默认 60s），过期后自动回队；超过 `runnerTaskMaxAttempts`（默认 3）进入 `dead`，不会阻塞后续任务。心跳过期后新 chat **不入队**，对绑定该 runner 的目标返回 **503** `runner_offline`（不静默打云 WP）。
 
 ## 3. `POST /v1/agents/register`
 
@@ -73,6 +77,9 @@ Query `?limit=` 可选，默认 1，最大 50。有 in-flight 时仍 **200** 且
   "tasks": [
     {
       "taskId": "msg_…",
+      "leaseToken": "lease_…",
+      "leaseSec": 60,
+      "attempt": 1,
       "prompt": "用户原文（无桌宠戳记）",
       "context": { "source": "pet-chat" },
       "env": "canary",
@@ -86,11 +93,25 @@ Query `?limit=` 可选，默认 1，最大 50。有 in-flight 时仍 **200** 且
 
 无任务：`{ "tasks": [] }`。HTTP 状态码为 **200**；`status`/`body` 是中继内部 handler 信封，**不会**出现在 JSON 里。
 
-## 6. `POST /v1/agents/tasks/result`
+`leaseToken` 是一次领取的 fencing credential，只返回一次；Connecter 只保存 hash。Runner 必须在执行前 ack，长任务须在过期前 renew。旧 lease 的迟到结果返回 `409 STALE_LEASE`。
+
+## 6. ack 与 renew
+
+```json
+{ "taskId": "msg_…", "leaseToken": "lease_…" }
+```
+
+- `POST /v1/agents/tasks/ack`：任务进入 `acknowledged`。
+- `POST /v1/agents/tasks/renew`：延长当前 lease。
+- `428 LEASE_TOKEN_REQUIRED`：缺 token；`409 STALE_LEASE`：token 不是当前 generation 或已过期。
+
+## 7. `POST /v1/agents/tasks/result`
 
 ```json
 {
   "taskId": "msg_…",
+  "leaseToken": "lease_…",
+  "resultId": "result_<uuid>",
   "status": "running",
   "content": "第一段：例如 WP 已受理",
   "writeBack": false
@@ -99,13 +120,19 @@ Query `?limit=` 可选，默认 1，最大 50。有 in-flight 时仍 **200** 且
 
 | `status` | 任务行 | 下行 |
 |----------|--------|------|
-| `running` / `accepted` | 仍为 `dispatched` | 一段 down，Pet 可 poll 到 |
+| `running` / `accepted` | `running` | 一段 down，Pet 可 poll 到 |
 | `completed` / `failed` / `cancelled` | 终态 | 再一段 down；默认 best-effort `postAsAgent` 回 WP（`writeBack: false` 可关） |
 
-**200** 终态约 `{ "ok": true, "status": "completed", "taskId" }`。`404` 无任务 · `403` 非本 runner · `409` 已终态。
+`(taskId, resultId)` 幂等：完全相同的重复 result 返回 200 + `duplicate:true`；同 resultId 不同内容返回 `409 RESULT_ID_CONFLICT`。旧 lease 不得覆盖新执行者结果。
 
-## 7. 适配器最小循环
+**200** 终态约 `{ "ok": true, "status": "completed", "taskId", "resultId" }`。`404` 无任务 · `403` 非本 runner · `409` 已终态/旧 lease。
 
-见 `scripts/wp-runner.js`：register（若动态）→ heartbeat 定时 → POST tasks → 调 WP 或本地执行 → result。不要对 Connecter 开入站端口。
+迁移期只有显式配置 `runnerProtocolCompatibility: "v1"` 才允许无 leaseToken/resultId 的旧 Runner；P1 完成后应关闭。协商后的协议版本持久化在 Runner 身份记录中，该开关只豁免注册为 v1 的 Runner，v2 Runner 永远不会继承此豁免。
+
+生产环境设置 `enrollment.requireDeviceCredentials: true` 后，`config.runners[].token` 不再能注册或调用 heartbeat/poll/result；Runner 必须先通过一次性 enrollment code 获得可轮换、可吊销的设备凭证。
+
+## 8. 适配器最小循环
+
+见 `scripts/wp-runner.js`：register（若动态）→ heartbeat 定时 → POST tasks → ack → 调 WP 或本地执行（必要时 renew）→ result。不要对 Connecter 开入站端口。
 
 配置预配见 `config/relay.schema.json` 的 `runners`。

@@ -52,7 +52,12 @@ export function registerHostPeer(config, body = {}) {
   if (!provisioned) {
     return Promise.resolve({ status: 403, body: { error: 'siteId not provisioned' } });
   }
-  if (provisioned.token !== token) {
+  const existing = db().prepare('SELECT status,token_hash FROM connecter_peers WHERE site_id = ?').get(siteId);
+  if (existing?.status === 'revoked') {
+    return Promise.resolve({ status: 403, body: { error: 'peer revoked; ops rotation required' } });
+  }
+  const expectedHash = existing?.token_hash || hashToken(provisioned.token);
+  if (hashToken(token) !== expectedHash) {
     return Promise.resolve({ status: 401, body: { error: 'token mismatch' } });
   }
   const label = String(body.label || provisioned.label || siteId).trim();
@@ -75,6 +80,34 @@ export function registerHostPeer(config, body = {}) {
       body: { ok: true, siteId, role: 'connecter', host: true },
     };
   });
+}
+
+export function revokeHostPeer(siteId) {
+  const id = String(siteId || '').trim();
+  if (!id) return { status: 400, body: { error: 'siteId required' } };
+  const result = db().prepare(
+    `UPDATE connecter_peers SET status='revoked' WHERE site_id=?`
+  ).run(id);
+  return result.changes === 1
+    ? { status: 200, body: { ok: true, siteId: id, status: 'revoked' } }
+    : { status: 404, body: { error: 'peer not found' } };
+}
+
+export function rotateHostPeerToken(config, siteId, token) {
+  const id = String(siteId || '').trim();
+  const next = String(token || '');
+  if (!id || next.length < 16) {
+    return { status: 400, body: { error: 'siteId and token of at least 16 characters required' } };
+  }
+  if (!provisionedHostPeer(config, id)) {
+    return { status: 404, body: { error: 'siteId not provisioned' } };
+  }
+  const result = db().prepare(
+    `UPDATE connecter_peers SET token_hash=?,status='active',last_seen_at=NULL WHERE site_id=?`
+  ).run(hashToken(next), id);
+  return result.changes === 1
+    ? { status: 200, body: { ok: true, siteId: id, status: 'active' } }
+    : { status: 404, body: { error: 'peer not registered' } };
 }
 
 export function heartbeatHostPeer(peer) {
