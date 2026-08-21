@@ -1,6 +1,6 @@
 {
   "name": "workpanel-connecter",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "CLI scheduler plane for cross-WorkPanel coordination via Team Coordinator agents",
   "type": "module",
   "bin": {
@@ -32,6 +32,7 @@
     "test:pet-login": "node scripts/pet-login-unit.js",
     "test:wp-slots": "node scripts/wp-slots-unit.js",
     "test:host-peers": "node scripts/host-peers-unit.js",
+    "test:runner-handler": "node scripts/runner-handler-unit.js",
     "wp-slot": "node scripts/wp-slot-register.js"
   },
   "engines": {

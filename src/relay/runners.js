@@ -266,6 +266,28 @@ export function pollRunnerTasks(runner, { limit = 1 } = {}) {
   });
 }
 
+/**
+ * HTTP handler envelope for POST /v1/agents/tasks.
+ * writeTx is async; callers that treat the raw poll as an array (or {tasks})
+ * make server.js call writeHead(undefined) → 500.
+ */
+export function asAgentTasksResult(pulled) {
+  if (pulled && typeof pulled.status === 'number' && pulled.body && Array.isArray(pulled.body.tasks)) {
+    return pulled;
+  }
+  if (Array.isArray(pulled)) {
+    return { status: 200, body: { tasks: pulled } };
+  }
+  if (pulled && Array.isArray(pulled.tasks)) {
+    return { status: 200, body: { tasks: pulled.tasks } };
+  }
+  if (pulled && pulled.body && Array.isArray(pulled.body.tasks)) {
+    const status = typeof pulled.status === 'number' ? pulled.status : 200;
+    return { status, body: pulled.body };
+  }
+  return { status: 200, body: { tasks: [] } };
+}
+
 export function heartbeatRunner(runner) {
   touchRunner(runner.id);
   return { ok: true, agentId: runner.id, channelId: runner.channel_id };

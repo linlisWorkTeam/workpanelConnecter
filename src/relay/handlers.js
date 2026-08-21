@@ -39,6 +39,7 @@ import {
   registerRunner,
   heartbeatRunner,
   pollRunnerTasks,
+  asAgentTasksResult,
   submitRunnerTaskResult,
   listRunnerBindings,
   findRunnerBinding,
@@ -651,11 +652,12 @@ export function createHandlers({ config }) {
         return { status: 200, body: heartbeatRunner(auth.runner) };
       },
 
-      agentTasks(auth, { limit }) {
+      async agentTasks(auth, { limit }) {
         if (auth.kind !== 'runner') {
           return { status: 403, body: { error: 'runner token required' } };
         }
-        return pollRunnerTasks(auth.runner, { limit });
+        const pulled = await pollRunnerTasks(auth.runner, { limit });
+        return asAgentTasksResult(pulled);
       },
 
       async agentTaskResult(auth, body) {

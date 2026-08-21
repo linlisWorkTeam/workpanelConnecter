@@ -332,7 +332,9 @@ WP 若无 `unreadCount` 则字段省略。
 
 ---
 
-## 5. E1 Runner API（dsh 出站注册表）
+## 5. E1/E2 Runner API（出站注册表）
+
+适配层请读 **[`docs/protocol/runners.md`](./protocol/runners.md)**（请求/响应 JSON、串行、TTL、两段 result）。配置字段见 **[`docs/relay-config.md`](./relay-config.md)** / `config/relay.schema.json`。
 
 > 状态：**E1 骨架 + E2 可插拔/串行/TTL/两段下行**（`src/relay/runners.js` + `scripts/wp-runner.js` + `npm run test:runner` / `npm run test:e2-canary`）。
 > Runner **不**绑定 dsh；dsh 只是未来一种实现。

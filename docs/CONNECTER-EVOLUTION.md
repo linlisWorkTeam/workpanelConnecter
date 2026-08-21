@@ -84,6 +84,7 @@ WorkPet B ──绑定──► Connecter B ──► 本站 WorkPanel B
 - **Connecter A → Connecter Host → Connecter B**（联邦；Host 不接桌宠）
 - WP→Connecter 回调、跨 env 审计（原 P2）  
 - 协调门面从「群 admin Agent」演进为 **非 AI 协调算法**（原架构债）
+- （未做，**不影响 Runner 适配**）进程内按 `translatorLinks` 加载跨 WP 翻译器
 
 ### 阶段 E4 — Host HA + dsh 自举（远期）
 

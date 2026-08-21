@@ -29,8 +29,10 @@ export function loadRelayConfig(configPath) {
 }
 
 function send(res, status, body) {
-  const raw = JSON.stringify(body);
-  res.writeHead(status, {
+  const code = Number.isInteger(status) ? status : 500;
+  const payload = body === undefined ? { error: 'empty handler body' } : body;
+  const raw = JSON.stringify(payload);
+  res.writeHead(code, {
     'content-type': 'application/json; charset=utf-8',
     'content-length': Buffer.byteLength(raw),
   });

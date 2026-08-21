@@ -1,0 +1,192 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://workpanelconnecter.local/config/relay.schema.json",
+  "title": "WorkPanelConnecter relay.json",
+  "description": "Connecter HTTP 中继配置。真实文件为 gitignore 的 config/relay.json；本 schema 描述字段含义。未知字段允许（additionalProperties）。",
+  "type": "object",
+  "additionalProperties": true,
+  "properties": {
+    "listen": {
+      "type": "object",
+      "description": "中继监听。可用环境变量 CONNECTER_RELAY_HOST / CONNECTER_RELAY_PORT 覆盖。",
+      "properties": {
+        "host": { "type": "string", "description": "默认 0.0.0.0" },
+        "port": { "type": "integer", "description": "开发常 9080；经 nginx 时进程仍听 9080" }
+      }
+    },
+    "publicBaseUrl": {
+      "type": "string",
+      "description": "写进 register 响应的 taskUrl/heartbeatUrl 前缀。NAT 后的 Runner 要用公网或反代可达地址。"
+    },
+    "db": {
+      "type": "object",
+      "properties": {
+        "path": { "type": "string", "description": "SQLite 路径，相对仓库根或绝对路径。默认 data/connector.db" }
+      }
+    },
+    "auth": {
+      "type": "object",
+      "description": "运维 ops bearer。不要把生产 token 提交进 git。",
+      "properties": {
+        "tokens": { "type": "array", "items": { "type": "string" } }
+      }
+    },
+    "allowProdFromPet": {
+      "type": "boolean",
+      "description": "false 时 pet 访问 env=prod → 403 PROD_FORBIDDEN"
+    },
+    "rateLimitPerMin": {
+      "type": "integer",
+      "description": "pet 非控制台请求限额，默认 60"
+    },
+    "consoleRateLimitPerMin": {
+      "type": "integer",
+      "description": "GET /v1/groups* 限额，默认 120"
+    },
+    "runnerHeartbeatTtlSec": {
+      "type": "integer",
+      "description": "Runner 心跳 TTL 秒，默认 60。过期则绑定目标 503 runner_offline"
+    },
+    "wpSlotHeartbeatTtlSec": {
+      "type": "integer",
+      "description": "自注册 WP 槽位 TTL 秒"
+    },
+    "cors": {
+      "type": "object",
+      "properties": {
+        "origins": {
+          "description": "允许的 Origin；含 * 则回显请求 Origin",
+          "oneOf": [
+            { "type": "string" },
+            { "type": "array", "items": { "type": "string" } }
+          ]
+        },
+        "allowedOrigins": { "description": "origins 的别名" }
+      }
+    },
+    "backends": {
+      "type": "object",
+      "description": "env 名 → WorkPanel HTTP 槽。key 即 GET /v1/envs 的 name（canary/prod/…）。",
+      "additionalProperties": { "$ref": "#/$defs/backend" }
+    },
+    "defaults": {
+      "type": "object",
+      "properties": {
+        "env": { "type": "string", "description": "缺省环境，通常 canary" },
+        "group": { "type": "string", "description": "缺省群名或 id" },
+        "coordinatorAgentName": { "type": "string", "description": "绑定缺省 agent 显示名；无 @ 路由仍以群 adminMemberId 为准" }
+      }
+    },
+    "host": {
+      "type": "object",
+      "description": "Connecter↔Host。role=connecter 时本站出站加入 Host；role=host 时本进程会合 peers。",
+      "properties": {
+        "role": { "enum": ["connecter", "host", "standalone"] },
+        "baseUrl": { "type": "string", "description": "站点 Connecter 要加入的 Host 根 URL" },
+        "siteId": { "type": "string" },
+        "token": { "type": "string", "description": "加入 Host 的 peer token（须在 Host 的 host.peers[] 预配）" },
+        "heartbeatMs": { "type": "integer", "description": "出站心跳间隔，默认 15000" },
+        "peerHeartbeatTtlSec": { "type": "integer", "description": "Host 侧 peer TTL，默认 90" },
+        "peers": {
+          "type": "array",
+          "description": "仅 Host：预配站点",
+          "items": {
+            "type": "object",
+            "required": ["siteId", "token"],
+            "properties": {
+              "siteId": { "type": "string" },
+              "token": { "type": "string" },
+              "label": { "type": "string" }
+            }
+          }
+        }
+      }
+    },
+    "runners": {
+      "type": "array",
+      "description": "出站 Runner 预配。协议见 docs/protocol/runners.md",
+      "items": { "$ref": "#/$defs/runner" }
+    },
+    "pets": {
+      "type": "array",
+      "description": "WorkPet 配置登记。动态 POST /v1/register 为二期。",
+      "items": { "$ref": "#/$defs/pet" }
+    }
+  },
+  "$defs": {
+    "backend": {
+      "type": "object",
+      "required": ["baseUrl"],
+      "additionalProperties": true,
+      "properties": {
+        "label": { "type": "string", "description": "GET /v1/envs 展示名，如「灰度」" },
+        "baseUrl": { "type": "string", "description": "WP HTTP 根，如 http://127.0.0.1:8081" },
+        "kind": { "type": "string", "description": "workpanel" },
+        "auth": {
+          "type": "object",
+          "description": "门面账号。pets[].wpAuth / 登录 overlay 优先。",
+          "properties": {
+            "username": { "type": "string" },
+            "password": { "type": "string" }
+          }
+        }
+      }
+    },
+    "runner": {
+      "type": "object",
+      "required": ["agentId", "token"],
+      "additionalProperties": true,
+      "properties": {
+        "agentId": { "type": "string" },
+        "token": { "type": "string" },
+        "agentType": { "type": "string", "description": "默认 runner；dsh 仍合法" },
+        "role": { "enum": ["general", "special"] },
+        "runtime": { "type": "string", "description": "local | ecs | remote…" },
+        "channelId": { "type": "string", "description": "省略则启动生成" },
+        "bindings": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/groupBinding" }
+        }
+      }
+    },
+    "pet": {
+      "type": "object",
+      "required": ["id", "token"],
+      "additionalProperties": true,
+      "properties": {
+        "id": { "type": "string" },
+        "token": { "type": "string", "description": "WorkPet Bearer；不要提交真实值" },
+        "name": { "type": "string" },
+        "ownerUserId": { "type": "string" },
+        "wpAuth": {
+          "type": "object",
+          "description": "该宠对应的 WP 用户。登录 overlay 优先于此。",
+          "properties": {
+            "username": { "type": "string" },
+            "password": { "type": "string" }
+          }
+        },
+        "wpUsername": { "type": "string", "description": "wpAuth.username 简写" },
+        "wpPassword": { "type": "string" },
+        "groups": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/groupBinding" }
+        }
+      }
+    },
+    "groupBinding": {
+      "type": "object",
+      "additionalProperties": true,
+      "properties": {
+        "env": { "type": "string" },
+        "groupId": { "type": "string" },
+        "group": { "type": "string", "description": "groupId 别名" },
+        "id": { "type": "string", "description": "groupId 别名" },
+        "groupName": { "type": "string" },
+        "name": { "type": "string", "description": "groupName 别名" },
+        "agentName": { "type": "string", "description": "Runner 绑定显示名；无 @ 聊天仍走群管理员 Agent" },
+        "adminAgentName": { "type": "string" }
+      }
+    }
+  }
+}
