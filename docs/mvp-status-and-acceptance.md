@@ -1,5 +1,7 @@
 # MVP Connecter — 现状与验收标准
 
+> 文档状态：早期 MVP 验收快照。当前能力已经扩展到 P0–P3 federation，权威状态见 `P0-P3-IMPLEMENTATION-STATUS.md`。
+
 > 任务：路线图闭环 · MVP版本Connecter · 实施 · **梳理现状与验收标准**  
 > 日期：2026-08-05  
 > 范围：仅 Connecter 仓 MVP（阶段 B）；不含真实 A2A / WP 协调 Agent 生产实现（阶段 C/D）

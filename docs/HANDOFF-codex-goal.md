@@ -1,5 +1,7 @@
 # HANDOFF · Connecter 实现交接
 
+> 文档状态：历史交接记录，不是当前任务清单。当前开发路径见 `NEXT-DEV-PATH.md`。
+
 > 工作目录：`/AI/WorkPanelConnecter`  
 > 更新：2026-08-07（进度核对）
 

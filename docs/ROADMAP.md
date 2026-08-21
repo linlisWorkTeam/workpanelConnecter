@@ -1,71 +1,47 @@
-# WorkPanelConnecter — Roadmap
+# WorkPanelConnecter Roadmap
 
-> 更新：2026-08-19（E2 可插拔 Runner 设计启动；dsh 延后到 E4）  
-> 规范：`docs/workconnector-system-design.md` · 设计：`docs/workpet-connecter-design.md` · 下一步：`docs/NEXT-DEV-PATH.md` · 演进：`docs/CONNECTER-EVOLUTION.md`
+> 当前版本：v0.2.3；更新：2026-08-22。
+> 已完成状态以 [`P0-P3-IMPLEMENTATION-STATUS.md`](./P0-P3-IMPLEMENTATION-STATUS.md) 和测试为准。
 
-## MVP 状态：Phase 0–4 已完成 ✅
+## 已完成
 
-| Phase | 内容 | 状态 | Commit / 证据 |
-|-------|------|------|----------------|
-| 0–1 | 中继核 | ✅ | `4b29ca9` |
-| 1.5 | SQLite + 配置 pets + 轮询/幂等 | ✅ | `4b29ca9` |
-| 2 | systemd `:9080` + nginx `:80` | ✅ | `fb6c49d` |
-| 3 | WorkPet Tauri + SDK | ✅ | `ac17952`（桌面编包留用户本机） |
-| 4 | E2E E1–E8 | ✅ | `f7db1bc` · `docs/workpet-e2e-checklist.md` |
-| **5** | 二期（见 NEXT） | ⏳ | `docs/NEXT-DEV-PATH.md` |
-
-## 2026-08-19：E1–E4 主线（调度演进）
-
-> Runner **可插拔**，不绑定 DSH。完整 ACP / 真 Harness 不在 Connecter 内做。E4 达线后再由 dsh 用同一 `/v1/agents/*` 自举。
-
-| 阶段 | 内容 | 状态 | 证据 / 规格 |
-|------|------|------|-------------|
-| **E1** | 出站注册 / 心跳 / 拉任务 / 回结果 | ✅ 代码骨架 | `6b6b4f6` · `src/relay/runners.js` · `docs/api-relay.md` §5 |
-| **E2** | 通用 Runner 槽 + 串行/TTL + `/v1/messages` 全文 + canary 实调用验收 | ✅ | `docs/superpowers/specs/2026-08-19-e2-pluggable-runner-design.md` |
-| **E3** | Team↔Team：非 AI 协调门面、跨 WP、审计 | ⏳ 未开始 | 依赖 WP 仓；Connecter 只做中继侧 |
-| **E4** | 中继 HA（可选）；dsh 作为一种 Runner 接手自举 | ⏳ 远期 | 不做完整 Raft「为用而用」 |
-
-**当前下一刀：E2 wp-runner 已在 ECS systemd 跑通（canary `:8081` 实调用）。E3/E4 未开始。**
-
-## 2026-08-07 更新：WorkPet Live2D 改造
-
-> 原 Phase 3 静态猫猫球保留为兼容降级，不再是主视觉。设计见 `docs/workpet-live2d-design.md`。
-
-| 子阶段 | 内容 | 状态 |
+| 阶段 | 内容 | 状态 |
 |---|---|---|
-| 3.1-a | Live2D 技术、资源许可、状态映射、窗口与降级设计 | ✅ 完成 |
-| 3.1-b | Live2D 渲染适配层与新桌宠 UI | ✅ 完成 |
-| 3.1-c | 模型资源准备、配置样例与许可 Notice | ✅ 完成 |
-| 3.1-d | 前端测试、Tauri 构建、透明窗口视觉验收 | ✅ 完成（Windows / WebView2） |
+| 基础中继 | WorkPet → Connecter → WorkPanel、SQLite、幂等、重试、恢复 | ✅ |
+| Runner E1/E2 | 注册、心跳/TTL、poll/ack/renew/result、lease/fencing、全文结果投影 | ✅ 本地代码与 canary |
+| P0 | 迁移、稳定 ID、服务边界、Runner 恢复和运维操作 | ✅ 本地门禁 |
+| P1 | Directory v2、enrollment/device credential、路由歧义与轮换吊销 | ✅ 本地门禁 |
+| P2 | Connecter A → Host → Connecter B 联邦、目录同步、结果回传、独立故障恢复 | ✅ 本地三进程门禁 |
+| P3 | 默认拒绝策略、签名/mTLS、配额、审计、trace、备份恢复 | ✅ 本地门禁 |
+| Windows 交付 | WorkPet NSIS、Connecter SEA 便携包、SHA-256、tag 自动发布 | ✅ v0.2.2 起 |
 
-## 角色
+## 当前发布门禁
 
-| 角色 | 职责 |
-|------|------|
-| **cs** | 文档同步、路径规划；实现按群指令继续（codex 搁置期间） |
-| **codex** | 搁置（工具通道故障）；恢复条件=至少一次真实命令成功 |
-| **用户 / 本机** | WorkPet 桌面构建与公网 TLS 决策 |
+- `npm run test:release-local`：51 项（含文档一致性门禁）；
+- Windows workflow：干净 Windows Runner 构建、Connecter health smoke、Release 上传；
+- WorkPet：38 项 UI 测试、6 项 Rust 测试、NSIS 安装/启动冒烟；
+- 本地 federation：短 soak、10 分钟和 8 分钟重复 soak；
+- 真实 canary：当前端口 `127.0.0.1:8082` 已通过成员和 @Agent 路由。
 
-## 早期阶段表（A–F，历史）
+## P4：部署环境验收（最高优先级）
 
-| 阶段 | 名称 | 现状 |
-|------|------|------|
-| A 设计 | 已定稿 | ✅ |
-| B Connecter CLI/中继 MVP | 已并入 Phase 0–4 | ✅ |
-| C API/对接文档 | **P0.2 已交付** `docs/api-relay.md` | ✅ |
-| D WP 协调 Agent | WP 仓；门面暂用群 admin Agent | ⏳ |
-| E 联调 | E1–E8 已过；跨实例增强在 Phase 5b | 部分 ✅ |
-| F 预留命令 | `/obs` `/restart-server` | 延后 |
+1. 在两台 Site 服务器和一台独立 Host 上部署真实 TLS/mTLS；
+2. 接入生产证书签发、轮换、吊销与外部 secret 管理；
+3. 接入真实告警接收器并验证磁盘、队列、失败率和证书告警；
+4. 完成 72 小时 soak、Host/Site 网络分区和恢复演练；
+5. 为 Windows 二进制配置 Authenticode 签名。
 
-## 建议的立刻下一步
+## P5：生态适配与体验
 
-见 **`docs/NEXT-DEV-PATH.md`** 与 **`docs/CONNECTER-EVOLUTION.md`**：
+1. 建立通用 adapter contract，避免 dsh、Clowder 等框架逻辑进入中继核心；
+2. 优先评估 A2A Server façade，使 Clowder 可把 Connecter 当远端 Agent 服务；
+3. 按需求增加 WS/SSE，同时保留 `since` 轮询兼容；
+4. 改进 WorkPet 首次配置、自动更新和安装签名体验。
 
-1. **E2** 可插拔 Runner 闭环（主线，cs）  
-2. P0.1 本机 WorkPet 冒烟（用户）  
-3. P1 CORS/HTTPS 已部分落地；外网 443 仍可能被云侧丢掉  
-4. E3 / E4 不插入 E2 之前
+## P6：按规模触发的 HA
 
-## 非目标（锁定）
+只有当单 Host 可用性或容量成为实际瓶颈时，才评估双 Host、外置数据库/队列或 Raft/etcd 成员共识。群消息正文继续由 WorkPanel 负责，不进入 Connecter 共识日志。
 
-- 新建 AT2AT；Connecter 业务网页/业务 Agent；默认 prod；旁路工作 Agent；Connecter 自建产/灰双槽  
+## 非目标
+
+Connecter 不成为业务网页、业务 Agent 或 WorkPanel 替代品；不默认访问 prod；不让 Host 执行 Agent；不为技术炫耀提前引入完整 Raft。

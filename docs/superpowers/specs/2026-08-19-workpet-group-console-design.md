@@ -1,5 +1,7 @@
 # WorkPet 迷你群控制台 — 设计稿
 
+> 文档状态：已实现的设计记录；当前 API 见 `docs/api-relay.md`。
+
 > 日期：2026-08-19  
 > 状态：**已批准**（展开后做成群控制台；Connecter 代理 WP；本宠气泡显示「XXX的Pet」）  
 > 相关：`docs/api-relay.md` · `docs/workconnector-system-design.md` · `docs/workpet-connecter-design.md` · `docs/NEXT-DEV-PATH.md`  

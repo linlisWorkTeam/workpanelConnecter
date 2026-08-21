@@ -1,5 +1,7 @@
 # WorkPet 小爱完成播报 — 设计稿
 
+> 文档状态：已实现的设计记录；当前行为由 WorkPet UI 测试覆盖。
+
 > 日期：2026-08-19  
 > 状态：**待你确认 spec 文件**（桌宠开关；Agent run 终态经 homepage TTS 播稍长结论）  
 > 相关：`docs/workpet-connecter-design.md` · `docs/superpowers/specs/2026-08-19-workpet-group-console-design.md`  

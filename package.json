@@ -1,6 +1,6 @@
 {
   "name": "workpanel-connecter",
-  "version": "0.2.2",
+  "version": "0.2.3",
   "description": "Site connector and central federation relay for WorkPanel, WorkPet, users, and remote agents",
   "type": "module",
   "bin": {
@@ -36,6 +36,7 @@
     "test:runner-compat": "node scripts/runner-compat-e2e.js",
     "test:migrations": "node scripts/migrations-unit.js",
     "test:runtime-root": "node scripts/runtime-root-unit.js",
+    "test:docs": "node scripts/documentation-consistency.js",
     "test:migration-copy": "node scripts/migration-copy-check.js",
     "test:runner-lease": "node scripts/runner-lease-unit.js",
     "test:runner-fencing": "node scripts/runner-fencing-unit.js",

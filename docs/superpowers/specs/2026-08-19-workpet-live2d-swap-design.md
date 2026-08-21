@@ -1,5 +1,7 @@
 # WorkPet 形象加载：Live2D / 状态动图 — 设计稿
 
+> 文档状态：已实现的设计记录；当前使用说明见 `apps/workpet/README.md`。
+
 > 日期：2026-08-19  
 > 状态：**已批准（双模式）**  
 > 相关：`docs/workpet-live2d-design.md` · 本文取代仅 Live2D 换模的交互描述

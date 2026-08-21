@@ -4,7 +4,7 @@ Date: 2026-08-22
 Baseline: `main@e5b51eb`
 Working branch: `codex/connecter-p0-p3`
 
-P0 through P3 code is implemented as a local release candidate. The current topology is:
+P0 through P3 code is implemented and released within the local evidence boundary. The current topology is:
 
 ```text
 WorkPet A -> Site Connecter A -> Connecter Host -> Site Connecter B -> Runner B
@@ -21,7 +21,7 @@ Implemented boundaries:
 - Runner and federation delivery both use durable leases and fencing. Site outboxes reconcile non-terminal Host acceptance, including Host database loss.
 - Production mode can reject static Runner bearer credentials, inline signing secrets and non-TLS Host URLs. Direct Site-to-Host mTLS client certificate files are supported with mandatory certificate verification.
 
-Repeatable evidence is exposed through the `test:migrations`, `test:runtime-root`, `test:runner-*`, `test:directory-*`, `test:federation-*`, `test:p3-security`, `test:device-identity`, `test:tls-config`, `test:mtls-handshake`, `test:policy-*`, `test:quota`, `test:trace-e2e`, `test:compat`, `test:backup-restore`, and `test:soak` scripts. `npm run test:release-local` passes 50 local release gates fail-fast, including packaged/source runtime-root isolation, a real ephemeral-CA mutual TLS handshake and the short soak. Two separate repeated three-process federation soaks also passed: 600,000 ms (wall time 602.4 s) and 480,000 ms (wall time 482.6 s), both ending with `FEDERATION_SOAK_OK`.
+Repeatable evidence is exposed through the `test:migrations`, `test:runtime-root`, `test:docs`, `test:runner-*`, `test:directory-*`, `test:federation-*`, `test:p3-security`, `test:device-identity`, `test:tls-config`, `test:mtls-handshake`, `test:policy-*`, `test:quota`, `test:trace-e2e`, `test:compat`, `test:backup-restore`, and `test:soak` scripts. `npm run test:release-local` passes 51 local release gates fail-fast, including documentation consistency, packaged/source runtime-root isolation, a real ephemeral-CA mutual TLS handshake and the short soak. Two separate repeated three-process federation soaks also passed: 600,000 ms (wall time 602.4 s) and 480,000 ms (wall time 482.6 s), both ending with `FEDERATION_SOAK_OK`.
 
 Windows binary delivery is implemented in v0.2.2: the release workflow builds and smoke-tests a Node SEA `WorkPanelConnecter.exe` portable package, builds a Tauri NSIS `WorkPet_<version>_x64-setup.exe`, generates SHA-256 checksums, and uploads all artifacts to GitHub Release. Code signing remains an external release credential requirement.
 

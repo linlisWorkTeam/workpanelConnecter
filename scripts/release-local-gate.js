@@ -2,7 +2,7 @@ import { spawn } from 'node:child_process';
 
 const gates = [
   'test', 'test:relay-unit', 'test:group-console', 'test:mentions', 'test:identity', 'test:pet-login',
-  'test:wp-slots', 'test:host-peers', 'test:runner-handler', 'test:runner-compat', 'test:migrations', 'test:runtime-root', 'test:migration-copy',
+  'test:wp-slots', 'test:host-peers', 'test:runner-handler', 'test:runner-compat', 'test:migrations', 'test:runtime-root', 'test:docs', 'test:migration-copy',
   'test:runner-lease', 'test:runner-fencing', 'test:runner-recovery', 'test:runner-ops', 'test:identifiers',
   'test:directory-contract', 'test:directory-projection', 'test:directory-api', 'test:enrollment', 'test:routes',
   'test:federation-contract', 'test:federation-host', 'test:federation-site', 'test:federation-routing', 'test:federation-result',

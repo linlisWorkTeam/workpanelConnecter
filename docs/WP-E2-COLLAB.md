@@ -1,5 +1,7 @@
 # 协同 WorkPanel 仓 — E2 全文回显（Connecter cs，2026-08-19）
 
+> 文档状态：2026-08-19 跨仓协作快照。当前 Runner/federation 状态见 `P0-P3-IMPLEMENTATION-STATUS.md`。
+
 > Connecter 本期 **可以不改 WP 就开工**：用现有 `POST /api/messages` + `GET /api/groups/{id}/messages` 轮询 Agent 回复。  
 > 下列项 **不是 E2 开工阻塞**；做了能少轮询、少踩游标坑。请 WP 同事按需排期。
 

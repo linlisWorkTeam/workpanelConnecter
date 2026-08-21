@@ -203,7 +203,7 @@
     },
     "pets": {
       "type": "array",
-      "description": "WorkPet 配置登记。动态 POST /v1/register 为二期。",
+      "description": "WorkPet 静态配置登记。WorkPet 可通过 POST /v1/auth/login 换取会话 token；当前没有通用 POST /v1/register。",
       "items": { "$ref": "#/$defs/pet" }
     }
   },

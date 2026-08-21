@@ -1,6 +1,6 @@
 # WorkPanelConnecter × DeepSeek Harness — 桥接定位与设计
 
-> 状态：**定位稿（2026-08 更新）· 关键决策已锁定（root 拍板）· 对接协议细节仍为草案**
+> 文档状态：**特定适配器设计快照**。通用 Runner、Directory 与 federation 已实现；真实 deepseek-harness ACP bridge 仍未在本仓完成。当前核心架构以 `docs/architecture.md` 和 `docs/protocol/` 为准。
 > 关联：`docs/workconnector-system-design.md`（N1–N3 规范）· `docs/workpet-connecter-design.md`（D1–D22）· `docs/CONNECTER-EVOLUTION.md`（E1–E4 演进）· `docs/api-relay.md`（冻结契约）
 
 ## 1. 一句话定位
@@ -106,9 +106,10 @@ dsh 是 DeepSeek 开源 agent harness（`@deepseek-ai/dsh`，Web 默认 `http://
 |----|------|
 | 中继核 / /v1/* / SQLite / 幂等 / canary 链路 | ✅ 已落地（Phase 0–4） |
 | WorkPanel 群门面桥接（Team↔Team） | ✅ 已落地（过渡用群 admin Agent） |
-| **deepseek-harness 注册进 Connecter 并作为执行 Runner** | 🟡 **E1 代码骨架已落地**（`/v1/agents/*` + `runners/runner_bindings/runner_tasks` 表 + ACP 承载通道 + pet-chat 改走 runner + 门禁 `npm run test:runner` / `scripts/relay-runner-smoke.js`）；⏳ 待真实 dsh 联调 |
-| Runner → Connecter 回调 / 全文回显 | 🟡 **E2 部分落地**：结果落 run 终态 + pet 轮询 down echo + **best-effort 以 agent 身份回写 WP 群线程**（`workpanelClient.postAsAgent`）；⏳ 真实 WP 联调确认 |
-| 中继高可用 / 注册表共识 | ⏳ E4（可选） |
+| 通用 Runner 注册、lease、结果与 WP 回写 | ✅ 已实现并有本地/WorkPanel canary 门禁 |
+| deepseek-harness ACP bridge | ⏳ 适配器尚未实现；不属于 Connecter 核心完成条件 |
+| 跨站 Connecter federation | ✅ 本地三进程、故障恢复和结果回传已实现；真实多服务器验收待部署环境 |
+| Host 高可用 / 注册表共识 | ⏳ 按规模触发的可选后续 |
 
 ## 6. 剩余待定（大方向已定，仅细节）
 

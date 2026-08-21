@@ -1,5 +1,7 @@
 # E2 可插拔 Runner — 设计稿
 
+> 文档状态：已实现的设计记录；当前线协议见 `docs/protocol/runners.md`。
+
 > 日期：2026-08-19 · Owner：**cs**  
 > 状态：**待群内确认后实现**（本文只设计，不含代码）  
 > 相关：`docs/CONNECTER-EVOLUTION.md` · `docs/api-relay.md` · `docs/bridge-deepseek-harness.md` · `src/relay/runners.js`

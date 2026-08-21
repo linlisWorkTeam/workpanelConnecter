@@ -4,7 +4,7 @@ WorkPanel 的站点连接与联邦中间件。每个站点部署一台 **Connect
 
 桥接定位与设计见 [docs/bridge-deepseek-harness.md](docs/bridge-deepseek-harness.md)。
 
-DeepSeek Harness 只是可接入的 Runner 实现之一，不是 Connecter 的产品边界。当前 P0–P3 本地实现与 49 项发布门禁状态见 [P0–P3 实现状态](docs/P0-P3-IMPLEMENTATION-STATUS.md)。
+DeepSeek Harness 只是可接入的 Runner 实现之一，不是 Connecter 的产品边界。当前 P0–P3 本地实现与 51 项发布门禁状态见 [P0–P3 实现状态](docs/P0-P3-IMPLEMENTATION-STATUS.md)。文档权威关系与历史快照边界见 [文档索引](docs/README.md)。
 
 ## 启动方式
 
@@ -58,7 +58,8 @@ npm run test:canary     # 直连 WP 灰度 :8081
 npm run test:relay      # 中继网关门禁
 npm run test:runner     # 可插拔 runner 队列/串行/TTL（无 WP）
 npm run test:e2-canary  # E2 实调用 canary :8081 + wp-runner（无 mock）
-npm run test:release-local # P0–P3 全量本地发布门禁（50 项，fail-fast）
+npm run test:release-local # P0–P3 全量本地发布门禁（51 项，fail-fast）
+npm run test:docs          # Markdown 链接、命令、路由覆盖与陈旧状态检查
 npm run build:windows      # Windows：生成 WorkPet NSIS + Connecter 自包含包
 ```
 

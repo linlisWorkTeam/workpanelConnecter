@@ -7,6 +7,8 @@ status: active
 
 # Epitaph: WorkPet CONNECTED SPACE / 注册表后续
 
+> 文档状态：2026-08-19 session 交接快照；其中“跨站未做”等表述已被 v0.2.0+ 实现取代。
+
 > 本会话将改由 **agentteam** 调度后续 Agent。先读 **日期更新** 的 [2026-08-20-workpet-appearance-login](./2026-08-20-workpet-appearance-login.md)，再读本文。
 
 ## Built this session

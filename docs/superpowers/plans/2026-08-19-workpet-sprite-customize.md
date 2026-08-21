@@ -1,5 +1,7 @@
 # WorkPet 状态动图「定制」Implementation Plan
 
+> 文档状态：已执行的历史实施计划；当前行为见 `apps/workpet/README.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 状态动图模式可复制固定定制 prompt，并加载符合四文件约定的 zip 皮肤；WorkPet 不调用任何生图 API。
