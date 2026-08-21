@@ -9,7 +9,7 @@ const gates = [
   'test:federation', 'test:federation-chaos',
   'test:federation-host-loss', 'test:federation-origin-restart', 'test:federation-target-restart', 'test:federation-host-restart', 'test:federation-inbox-retry',
   'test:federation-workpanel-outage',
-  'test:p3-security', 'test:device-identity', 'test:tls-config', 'test:policy-matrix', 'test:policy-api', 'test:quota', 'test:compat',
+  'test:p3-security', 'test:device-identity', 'test:tls-config', 'test:mtls-handshake', 'test:policy-matrix', 'test:policy-api', 'test:quota', 'test:compat',
   'test:trace-e2e', 'test:backup-restore', 'test:runner', 'test:relay', 'test:e2e-resume',
   'test:soak-smoke',
 ];

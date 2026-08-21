@@ -27,6 +27,7 @@ npm run test:federation-target-restart
 npm run test:federation-host-restart
 npm run test:federation-inbox-retry
 npm run test:federation-workpanel-outage
+npm run test:mtls-handshake
 npm run test:trace-e2e
 npm run test:soak-smoke
 ```
@@ -45,6 +46,7 @@ These tests use temporary configuration, databases and ports. They verify Site A
 | `test:federation-target-restart` | Site B alone restarts while the Host retains the queued command |
 | `test:federation-host-restart` | Host alone restarts while both Sites stay online and reconcile transit |
 | `test:federation-workpanel-outage` | Origin WorkPanel outage/restart; remote terminal remains committed and failure is independently observable |
+| `test:mtls-handshake` | Ephemeral CA/server/client certificates, authorized request and pre-handler rejection without a client certificate |
 | `test:trace-e2e` | End-to-end trace, audit and operational projections |
 | `test:soak-smoke` | Repeated fresh three-process round trips and clean backlog termination |
 

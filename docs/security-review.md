@@ -18,4 +18,4 @@ Scope: Relay HTTP authentication, Runner enrollment, Directory routing, Site/Hos
 
 ## Evidence boundary
 
-Local automated gates cover invalid signature, key rotation/revocation, default deny, policy dimensions, scope escalation, target non-disclosure, quota isolation, append-only audit and Host/Site/Runner crash recovery. Production TLS termination, mTLS identity binding, network egress policy, OS secret-store permissions and external penetration testing require the deployment environment and remain release gates.
+Local automated gates cover invalid signature, key rotation/revocation, default deny, policy dimensions, scope escalation, target non-disclosure, quota isolation, append-only audit, Host/Site/Runner crash recovery, and an ephemeral-CA mTLS handshake that rejects a client without a certificate before the application handler. Production ingress termination, real Site certificate identity binding/rotation, network egress policy, OS secret-store permissions and external penetration testing require the deployment environment and remain release gates.

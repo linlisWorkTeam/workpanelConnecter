@@ -1,6 +1,6 @@
 {
   "name": "workpanel-connecter",
-  "version": "0.2.0",
+  "version": "0.2.1",
   "description": "Site connector and central federation relay for WorkPanel, WorkPet, users, and remote agents",
   "type": "module",
   "bin": {
@@ -63,6 +63,7 @@
     "test:p3-security": "node scripts/p3-security-unit.js",
     "test:device-identity": "node scripts/device-identity-unit.js",
     "test:tls-config": "node scripts/tls-config-unit.js",
+    "test:mtls-handshake": "node scripts/mtls-handshake-e2e.js",
     "test:policy-matrix": "node scripts/policy-matrix-unit.js",
     "test:policy-api": "node scripts/policy-api-unit.js",
     "test:quota": "node scripts/quota-unit.js",
