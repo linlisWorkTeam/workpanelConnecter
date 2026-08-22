@@ -1,6 +1,6 @@
 {
   "name": "workpet",
-  "version": "0.2.0",
+  "version": "0.2.3",
   "private": true,
   "type": "module",
   "description": "WorkPet Live2D 桌宠 — WorkPanel 桌面入口（经 Connecter 中继）",

@@ -1,5 +1,7 @@
 # WorkPet × Connecter 中继 — 设计稿
 
+> 文档状态：2026-08-05 历史设计快照。当前拓扑、联邦和安全能力以 `docs/architecture.md`、`docs/api-relay.md` 与 `docs/P0-P3-IMPLEMENTATION-STATUS.md` 为准。
+
 > 日期：2026-08-05  
 > 状态：**cs 代决冻结**（操作者疲惫授权「你自己分析」；若次日有异议可改 D10–D12）  
 > 相关：`architecture.md` · `scheduling-boundaries.md` · canary 联调记录

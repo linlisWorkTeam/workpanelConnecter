@@ -1,5 +1,7 @@
 # WorkPet 小爱完成播报 Implementation Plan
 
+> 文档状态：历史实施计划。小爱播报的最终行为以 WorkPet 测试和 `apps/workpet/README.md` 为准。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** 桌宠开关打开后，本宠发出的 Agent run 真正结束时，经 linlisHomePage 用小爱播一句稍长口语结论。

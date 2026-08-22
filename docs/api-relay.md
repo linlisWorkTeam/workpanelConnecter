@@ -288,7 +288,7 @@ WP 若无 `unreadCount` 则字段省略。
 
 ---
 
-## 3. 注册（MVP = 配置，无 HTTP register）
+## 3. 身份、注册与接入
 
 `config/relay.json`：
 
@@ -305,7 +305,7 @@ WP 若无 `unreadCount` 则字段省略。
 
 `wpAuth` = 该桌宠对应的 **WP 用户**（群里 `kind=user` 且 `authUserId` 已绑定）。省略时回落 `backends.*.auth` 门面账号。WorkPet **不**直连 WP：登录走 `POST /v1/auth/login`，之后只用 pet token。
 
-启动时 upsert `pets` / `agent_instances` / `sessions`。动态 `POST /v1/register` = 二期。
+启动时仍会 upsert `pets` / `agent_instances` / `sessions`。当前没有通用 `POST /v1/register`；不同主体使用各自的受限接入协议：Runner 使用 `POST /v1/agents/register` 或 Directory v2 enrollment/device credential，Site peer 使用 `POST /v1/host/peers/register`，WorkPanel backend 使用 ops `POST /v1/backends/register`。
 `pets[].groups` 仍是默认值班绑定；**不**扩大可见范围。可见范围见 §1.3 G11（自己所在的群）。
 
 `GET /v1/members`：`selfMemberId` + 成员 `self` / `online`（用户在线来自 WP `GET /api/presence`；Pet 心跳 `POST /api/presence/heartbeat`）。展开面板主路径仍是 `GET /v1/groups*`。
@@ -360,13 +360,19 @@ WP 若无 `unreadCount` 则字段省略。
 
 ---
 
-## 6. 非目标（本契约版本）
+## 6. Directory v2、联邦与运维 API
 
-- WebSocket、WP→Connecter 回调、动态注册审批
-- Connecter 业务网页
-- 保证 Agent 自然语言全文已在 `/v1/messages`（仅保证调度受理与 ack）
-- WP Pet 成员身份 / WorkPet 登录（G12 · 见 NEXT **P2.5**，本期不实现）
-# P3 federation operations
+详细字段以协议文档和 handler 为准：
+
+- Directory/enrollment：`POST /v2/enrollments`、`GET /v2/ops/enrollments/:id`、`DELETE /v2/ops/enrollments/:id`、`GET /v2/directory/subjects`、`GET /v2/directory/endpoints`、`GET /v2/routes/explain`；
+- credential：`POST /v2/credentials/rotate`、`POST /v2/ops/credentials/:id/revoke`；
+- federation：`POST /v1/federation/messages`、`POST /v1/federation/pull`、`POST /v1/federation/ack`、`POST /v1/federation/result`、`POST /v1/federation/directory/advertise`、`GET /v1/federation/directory`；
+- task ops：`GET /v1/ops/tasks`、`POST /v1/ops/tasks/:id/requeue`、`POST /v1/ops/tasks/:id/cancel`；
+- federation ops：`GET /v1/ops/federation/outbox`、`POST /v1/ops/federation/outbox/:id/requeue`、策略、Host peer revoke/rotate、安全投递清单、health detail 和 trace。
+
+协议入口：[`protocol/directory-v2.md`](./protocol/directory-v2.md)、[`protocol/federation-v1.md`](./protocol/federation-v1.md)、[`protocol/runners.md`](./protocol/runners.md)。
+
+### 6.1 P3 federation operations
 
 All endpoints below require an ops bearer token.
 
@@ -378,3 +384,11 @@ All endpoints below require an ops bearer token.
 - `GET /v1/ops/security/deliveries?siteId=&keyId=&status=&since=&until=&limit=` returns the affected-delivery inventory for incident response.
 - `GET /v1/ops/health/detail` returns queue, lease, retry, dead-letter, ACL, latency and WorkPanel write-back metrics.
 - `GET /v1/ops/traces/:traceId` returns route, audit and telemetry records across the live and archived audit sets.
+
+## 7. 非目标（本契约版本）
+
+- Connecter 业务网页或内嵌业务 Agent；
+- Host 接收 WorkPet、WorkPanel 或 Runner 执行接口；
+- 默认访问 prod 或由 Connecter 修改 WorkPanel 发布槽；
+- WebSocket/SSE（当前保持 `since` 轮询兼容）；
+- 通用、无边界的 `/v1/register`；接入必须使用主体专用的 Runner、Site peer、backend 或 enrollment 协议。

@@ -1,5 +1,7 @@
 # Connecter × WorkPanel 灰度联调记录（无 mock）
 
+> 文档状态：历史验证快照。当前 canary 与发布证据见 `P0-P3-IMPLEMENTATION-STATUS.md`。
+
 > 日期：2026-08-05  
 > 验证人：Agent cs  
 > 槽位：**仅 canary `:8081`**（生产 `:8080` 未改、未打）

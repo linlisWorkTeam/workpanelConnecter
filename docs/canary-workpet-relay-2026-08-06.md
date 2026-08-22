@@ -1,5 +1,7 @@
 # 灰度验证记录 · WorkPet × Connecter 中继（2026-08-06）
 
+> 文档状态：历史验证快照。文中的环境地址和消息 ID 不代表当前运行状态。
+
 > 环境：canary WP `http://127.0.0.1:8081`（真实服务，无 mock）· 群：「灰度测试」
 > 链路：WorkPet SDK / 门禁 → nginx `:80` → Connecter `:9080`（systemd）→ canary `:8081`
 

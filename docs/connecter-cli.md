@@ -1,124 +1,26 @@
-# Connecter CLI 设计
+# Connecter 运维 CLI
 
-> 状态：v1 设计稿  
-> 日期：2026-08-04  
-> 相关：`architecture.md` · `ROADMAP.md`
+> 状态：当前 CLI 参考；更新于 2026-08-22。
 
-## 1. 产品形态
+WorkPanelConnecter 产品由站点/Host HTTP Relay、Runner 协议、WorkPet UI 和运维 CLI 组成。本页只描述 `npm start` 启动的兼容 CLI，不再把“纯 CLI”视为整个产品架构。
 
-- **纯 CLI**，无网页端。
-- 交互模式：启动后进入会话式 shell（或等价 REPL）；斜杠命令 + 自由输入。
-- 目标用户：需要跨 WorkPanel / 跨群组发起调度的操作者与自动化脚本（后续可支持非交互参数，MVP 以交互为主）。
+| 命令 | 当前状态 | 行为 |
+|---|---|---|
+| `/chat {server} /{team}` | 已实现 | 向已配置服务的目标群协调 Agent 投递 prompt |
+| `/show-server` | 已实现 | 显示最近 refresh 的服务可达性 |
+| `/show-team {server} [/{team}]` | 已实现 | 列出群或显示群详情 |
+| `/refresh` | 已实现 | 重新探测服务与协调 Agent |
+| `/show-log [N]` | 已实现 | 显示最近 N 条调度记录，默认 10 |
+| `/restart-server` | 保留 stub | 返回 `not implemented`，不执行重启 |
+| `/obs {server} [{team}]` | 保留 stub | 返回 `not implemented`；HTTP 可观测入口见 [`observability.md`](./observability.md) |
 
-## 2. 命令一览
+CLI 的补全词表来自本地配置和最近一次 refresh。服务/群可用 ID 或显示名查找；离线目标不会被 `/chat` 正常调度。CLI 不解析 prompt 领域语义，也不是跨站身份或 membership 的权威来源；这些职责属于 Site Connecter、Directory 与 Connecter Host。
 
-| 命令 | MVP | 说明 |
-|------|-----|------|
-| `/chat {服务} /{群组}` + prompt | **是** | 向目标服务的目标群组协调 Agent 发起调度（跨团队消息/任务） |
-| `/show-server` | **是** | 列出在线服务 |
-| `/show-team {群组}` | **是** | 列出指定服务下在线群组（见下：参数与服务上下文） |
-| `/refresh` | **是** | 刷新 server、协调 Agent 在线状态 |
-| `/show-log [{次数}]` | **是** | 最近 N 次调度记录；缺省 N=10 |
-| `/restart-server` | **预制，不实现** | 一键在已部署 WorkPanel 的服务上重启 |
-| `/obs {服务} [{群组}]` | **预制，不实现** | 获取服务或群组统计信息 |
+启动与基本验证：
 
-## 3. 命令详设
-
-### 3.1 `/chat`
-
-**形态**
-
-```text
-/chat {服务ID或服务名} /{群组ID或群组名}
-<prompt...>
+```powershell
+npm start
+npm test
 ```
 
-**行为**
-
-1. 服务、群组参数支持 **自动补全**（基于 `/refresh` 后的在线目录）。
-2. Connecter 解析目标 → 定位该 WorkPanel 群组上的**唯一协调 Agent**。
-3. 经 A2A（或过渡期等价客户端）向协调 Agent 投递任务；prompt 为不透明载荷。
-4. 等待协调层终态（成功/失败/超时）并打印摘要；同时写入调度记录供 `/show-log`。
-
-**失败**
-
-- 服务/群组不存在或离线 → 立即失败并提示。
-- 协调 Agent 不可用 → **调度失败**（不回退到工作 Agent）。
-
-### 3.2 `/show-server`
-
-- 输出当前已知且判定为在线的服务列表（ID、名称、可达性、最近心跳/探测时间）。
-- 数据来源于上次 `/refresh` 或启动时的探测结果。
-
-### 3.3 `/show-team`
-
-**形态**
-
-```text
-/show-team {群组ID或群组名}
-```
-
-Roadmap 原文按「该服务的群组」理解。设计约定（MVP）：
-
-- 若当前 CLI 已通过上下文选中服务（例如上一次 `/chat` 的服务，或先扩展 `/use-server`——**MVP 可不实现 `/use-server`，改为强制**：
-
-```text
-/show-team {服务ID或服务名} /{群组ID或群组名可选}
-```
-
-**冻结决策（推荐）**：MVP 使用
-
-```text
-/show-team {服务} [/{群组}]
-```
-
-- 仅 `{服务}`：列出该服务下在线群组（及各群协调 Agent 状态）。
-- `{服务}/{群组}`：展示该群组详情（协调 Agent Card 摘要、`team_metadata` 可见字段）。
-
-> **已冻结（2026-08-04）**：采用上述形态。
-
-自动补全：服务名/ID、群组名/ID。
-
-### 3.4 `/refresh`
-
-- 重新探测已配置/已发现的服务与协调 Agent 可达性。
-- 更新本地在线缓存；不影响已发出任务的服务端状态机（仅影响后续命令的目标选择）。
-
-### 3.5 `/show-log [{次数}]`
-
-- 展示 Connecter 侧最近 N 条调度记录；默认 **10**。
-- 每条至少包含：时间、源上下文（若有）、目标服务/群组、任务 ID（若有）、终态、错误摘要。
-
-### 3.6 `/restart-server`（预制）
-
-- 命令解析与帮助文案预留；实现返回「未实现」。
-- 意图：对已部署 WorkPanel 的机器执行受控重启（需强鉴权，对接文档阶段定义）。
-
-### 3.7 `/obs`（预制）
-
-```text
-/obs {服务} [{群组}]
-```
-
-- 解析与补全预留；实现返回「未实现」。
-- 意图：服务或群组级统计（延迟、成功率等），数据源由对接文档定义。
-
-## 4. 自动补全
-
-- 补全词表来自本地在线目录（`/refresh` 维护）。
-- 服务：ID 与名称均可匹配；群组同理。
-- 离线项：可灰显或标注 `[offline]`，默认不可选为 `/chat` 目标（可配置是否允许强制）。
-
-## 5. 非功能
-
-| 项 | MVP 期望 |
-|----|----------|
-| 配置 | 本地配置文件列出服务入口（Agent Card URL / base URL 等），发现方案见架构开放问题 |
-| 密钥 | 环境变量或本地密钥文件；不进仓库 |
-| 输出 | 人类可读表格/块；后续可加 `--json`（非 MVP） |
-| 网页 | **永不作为本产品形态**（自动化走 CLI/退出码即可） |
-
-## 6. 与边界文档的关系
-
-- CLI 不承载业务 UI、不做工作 Agent 直连。
-- `/chat` 的 prompt 不在 Connecter 内做领域解析。
+HTTP Relay 使用 `npm run relay`，生产 API 与鉴权见 [`api-relay.md`](./api-relay.md)。

@@ -1,10 +1,9 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { fileURLToPath } from 'node:url';
+import { runtimeRoot } from './runtimeRoot.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const ROOT = path.resolve(__dirname, '..');
+export const ROOT = runtimeRoot(import.meta.url, 1);
 
 export function defaultConfigPath() {
   return (

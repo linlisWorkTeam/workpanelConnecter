@@ -1,16 +1,16 @@
 # Connecter 稳定标识符
 
-> 日期：2026-08-21 · P0 基础契约
+> 状态：P0–P3 当前契约；更新于 2026-08-22。
 
-## 原则
+## 规则
 
-- 显示名不是身份。`agentName`、`groupName`、用户名只用于展示和兼容查找。
-- 所有跨站主体必须先落到稳定 `subjectId`；同名主体在不同站点不会相撞。
+- 显示名不是身份；`agentName`、`groupName` 和用户名仅用于展示与兼容查找。
+- 跨站主体必须先映射到稳定 `subjectId`，不同站点的同名主体不会相撞。
 - `siteId` 使用小写 DNS-label 风格：`[a-z0-9][a-z0-9-]{0,62}`。
-- `subjectId` 是由 `(siteId, kind, local stable id)` 确定性派生的 UUID；kind 只能是 `user|agent|workpet|service`。
-- WorkPanel 群用 `groupRef = wp:<authority-site>:<url-encoded-group-id>`。
-- 每条业务链路使用 UUID `traceId`、`correlationId`，派生事件另带 `causationId`。
+- `subjectId` 由 `(siteId, kind, local stable id)` 确定性派生为 UUID；`kind` 为 `user|agent|workpet|service`。
+- WorkPanel 群使用 `groupRef = wp:<authority-site>:<url-encoded-group-id>`。
+- 每条业务链路使用 UUID `traceId`、`correlationId`；派生事件另带 `causationId`。
 
-## 兼容规则
+## 当前兼容行为
 
-P0 不改变现有 `/v1/*` 的外部 ID。P1 建立 Directory 投影时，为旧 `runners`、WP members 和 WorkPet 派生稳定 subjectId；P2 federation envelope 只接受稳定 ID，不允许以显示名跨站寻址。
+现有 `/v1/*` 外部 ID 保持不变。Directory v2 会为旧 Runner、WorkPanel member 和 WorkPet 派生稳定主体；federation envelope 只接受稳定 ID，不允许以显示名跨站寻址。迁移顺序与开关见 [`directory-v2.md`](./directory-v2.md)。

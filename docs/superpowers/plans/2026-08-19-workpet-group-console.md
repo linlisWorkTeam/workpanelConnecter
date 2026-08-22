@@ -1,5 +1,7 @@
 # WorkPet Mini Group Console Implementation Plan
 
+> 文档状态：已执行的历史实施计划；当前用户行为与 API 见 `apps/workpet/README.md` 和 `docs/api-relay.md`。
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Expand WorkPet into a mini group console (switch façade-visible groups, member online, `@Agent` dispatch, recent WP messages) while the pet still talks only to Connecter.

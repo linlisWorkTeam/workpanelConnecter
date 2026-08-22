@@ -1,7 +1,7 @@
 # WorkConnector 中继服务 · 系统设计
 
 > 日期：2026-08-06 · 作者：OpenClaw（PM）
-> 状态：**已评审通过，作为本项目规范**（root 2026-08-06 11:22 确认 1A/2A/3A；与 `docs/workpet-connecter-design.md` D1–D12 对齐）
+> 文档状态：**2026-08-06 历史设计基线，已被 `docs/architecture.md`、`docs/protocol/` 与 v0.2.2 实现取代，不再作为当前规范**。N1–N3 的历史决策仍保留用于追溯。
 > 关联：`docs/superpowers/plans/2026-08-06-workpet-connecter-relay.md`（cs 已实现 Phase 0–1）
 
 ## 0. 定位与设计原则

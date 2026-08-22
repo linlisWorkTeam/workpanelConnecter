@@ -5,7 +5,7 @@ WorkPanel 桌宠入口：透明置顶角色 + 展开聊天。形象有两种加�
 ```
 WorkPet ──绑定──► Connecter(:80 nginx → :9080) ──► 本站 WorkPanel
                      │
-                     ▼  （跨站才走，E3 未实现）
+                     ▼  （仅跨站消息经过 Host）
                 Connecter Host
 ```
 
@@ -21,7 +21,7 @@ WorkPet ──绑定──► Connecter(:80 nginx → :9080) ──► 本站 Wo
 
 1. 复制 `config.example.json` → `~/.workpet/config.json`
 2. 必填（Connecter 聊天）：
-   - `connecterBaseUrl`：这只宠绑定的 **本站 Connecter**（默认 `http://127.0.0.1:9080`）。公网 ECS 地址不算本环境，启动时会优先改回本机/局域网 Connecter。跨站走 Host（尚未实现），不要把桌宠直接绑到别的站。
+   - `connecterBaseUrl`：这只宠绑定的 **本站 Connecter**（默认 `http://127.0.0.1:9080`）。公网 ECS 地址不算本环境，启动时会优先改回本机/局域网 Connecter。跨站由本站 Connecter 经 Host 联邦，不要把桌宠直接绑到 Host 或别的站。
    - `preferLocalConnecter`：默认 `true`。设为 `false` 才允许绑到非本环境 URL。
    - `token`：那一台 Connecter 的 `relay.json` → `pets[].token`（找管理员要）
    - `group` / `agent`：与该中继上的群/Agent 及 runner binding 一致（当前 ECS 灰度群「灰度测试」/ Cursor Agent）
@@ -48,6 +48,14 @@ npm run test:ui                # UI 配置与状态门禁
 npm run dev                    # 开发运行（Vite + Tauri 透明窗口）
 npm run build                  # 构建桌面程序
 ```
+
+Windows release 构建会生成可双击安装的 NSIS 包：
+
+```text
+src-tauri/target/release/bundle/nsis/WorkPet_<version>_x64-setup.exe
+```
+
+仓库根目录执行 `npm run build:windows` 会同时构建 WorkPet 安装器、Connecter 自包含包及 `SHA256SUMS.txt`。tag 发布时 `.github/workflows/release-windows.yml` 会自动上传这些文件到 GitHub Release。
 
 前置依赖（按官方文档）：
 - Windows：VS Build Tools（含 WebView2 SDK）

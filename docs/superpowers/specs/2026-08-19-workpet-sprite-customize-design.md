@@ -1,5 +1,7 @@
 # WorkPet 状态动图「定制」— 设计稿
 
+> 文档状态：已实现的设计记录；当前使用说明见 `apps/workpet/README.md`。
+
 > 日期：2026-08-19  
 > 状态：**已批准**  
 > 相关：`docs/superpowers/specs/2026-08-19-workpet-live2d-swap-design.md`（双模式、四文件皮肤约定）

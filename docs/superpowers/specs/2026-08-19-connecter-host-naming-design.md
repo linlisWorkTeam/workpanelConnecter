@@ -2,7 +2,7 @@
 
 > 日期：2026-08-19 · 状态：**已拍板**  
 > 拍板：用户确认「同意」  
-> 相关：`docs/CONNECTER-EVOLUTION.md` · `docs/api-relay.md` · E3 跨站仍未实现
+> 文档状态：命名与边界决定仍有效；其中“联邦未实现”属于 2026-08-19 历史状态。当前实现见 `docs/architecture.md` 与 `docs/P0-P3-IMPLEMENTATION-STATUS.md`。
 
 ## 1. 锁定的名字
 
@@ -33,7 +33,7 @@ WorkPet B ──绑定──► Connecter B ──► 本站 WorkPanel B
 ```
 
 - **本站**：`WorkPet A → Connecter A → WP A`。**不经过 Host**。Host 宕机，本站聊天仍应可用。
-- **跨站**：`Connecter A → Host → Connecter B → WP B`。会合链路：站点 Connecter 出站 `POST /v1/host/peers/register` + heartbeat（已落地）。**消息联邦仍属 E3，尚未实现。**
+- **跨站**：`Connecter A → Host → Connecter B → WP/Runner B`。会合链路和 durable federation 均已在 v0.2.0+ 落地；真实多服务器部署仍是环境验收项。
 
 ## 3. 守住的边界
 
@@ -46,7 +46,7 @@ WorkPet B ──绑定──► Connecter B ──► 本站 WorkPanel B
 ## 4. 当前部署怎么读
 
 ECS `connecter-relay` + nginx `:80 /v1/` = **云站点 Connecter 与 Host 合署**。  
-本机 `127.0.0.1:9080` = **本环境 Connecter**。WorkPet **优先绑定本环境**（loopback / 局域网），不把桌宠直接绑到 ECS。跨站尚未实现。
+本机 `127.0.0.1:9080` = **本环境 Connecter**。WorkPet **优先绑定本环境**（loopback / 局域网），不把桌宠直接绑定 Host 或别的站；跨站由本站 Connecter 代为联邦。
 
 局域网：每台（或每办公室）一台 Connecter；需要跨站时所有 Connecter 指向同一 Host URL。桌宠仍只填本站 Connecter。
 

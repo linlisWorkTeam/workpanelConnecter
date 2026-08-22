@@ -7,6 +7,8 @@ status: active
 
 # Epitaph: WorkPet 登录 + Live2D/状态动图定制
 
+> 文档状态：2026-08-20 session 交接快照；其中跨站联邦未完成的表述已被 v0.2.0+ 取代。
+
 > 先读本文，再读 [2026-08-19-workpet-connected-space](./2026-08-19-workpet-connected-space.md)（群控制台 / Host 命名 / 槽位 follow-up）。
 
 ## Built this session

@@ -1,5 +1,7 @@
 # WorkPet Live2D 改造设计
 
+> 文档状态：已实现的设计记录。当前构建与安装说明以 `apps/workpet/README.md` 为准；v0.2.2 已提供 Windows NSIS 安装器。
+
 > 日期：2026-08-07  
 > 状态：已实现并通过 Windows / WebView2 验收  
 > 范围：`apps/workpet` 桌面端；Connecter API 与路由协议不变

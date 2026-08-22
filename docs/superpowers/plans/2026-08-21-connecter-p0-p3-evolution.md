@@ -1,5 +1,7 @@
 # Connecter P0–P3 Evolution Implementation Plan
 
+> 文档状态：已完成的实施计划和验收来源。checkbox 保留执行历史；当前结果见 `docs/P0-P3-IMPLEMENTATION-STATUS.md`。
+
 > **执行方式：** 按阶段、按 Task 顺序实施；每个 Task 单独 PR/提交并通过该 Task 门禁后再进入下一项。执行时不要自动 commit，除非用户当场要求。
 
 **Goal:** 将现有“站点内 WorkPet/WorkPanel/Runner 中继 + Host peer 注册骨架”演进为可靠、可扩展、可审计的多站 Connecter 网络，最终打通 `Connecter A → Connecter Host → Connecter B` 的真实消息闭环。

@@ -1,5 +1,7 @@
 # WorkPet × Connecter 中继 — 设计稿
 
+> 文档状态：2026-08-05 历史设计，已被当前架构和 federation 协议扩展；请从 `docs/architecture.md` 开始阅读。
+
 > 日期：2026-08-05  
 > 状态：**cs 代决冻结**（操作者疲惫授权「你自己分析」；若次日有异议可改 D10–D12）  
 > 相关：`architecture.md` · `scheduling-boundaries.md` · canary 联调记录

@@ -12,7 +12,7 @@
 | HTTPS 域名（443 通时） | `https://www.coffeecookie.online` | 同上 |
 | 以后（局域网本站） | `http://<本站Connecter>:9080` 或内网 nginx `:80` | 同机 `127.0.0.1:9080` |
 
-跨站走 Host（E3，未实现）。本站聊天不经 Host。桌宠不做扫端口 / mDNS。
+跨站走 Host federation；本站聊天不经 Host。桌宠不做扫端口 / mDNS，也不直接连接 Host。
 
 ## 1. 端口
 
@@ -20,7 +20,7 @@
 |------|------|------|
 | :80 | nginx | 对外；`/v1/*` → Connecter |
 | :9080 | connecter-relay.service | 本机中继 |
-| :8081 / :8080 | WP canary / prod | 仅作 backend，Connecter 不改其部署 |
+| :8082（当前本机）/ :8081（历史 fixture）/ :8080 | WP canary / prod | 仅作 backend，实际地址以 `relay.json` 为准；Connecter 不改其部署 |
 
 开发可直连 `CONNECTER_RELAY_PORT=9080`，无需 nginx。
 
@@ -89,7 +89,7 @@ systemctl disable --now connecter-relay
 
 ## 6. wp-runner（E2，ECS）
 
-进程出站 pull：`heartbeat` + `/v1/agents/tasks` → 实打 canary WP `:8081` → `/v1/agents/tasks/result`。  
+进程出站 pull：`heartbeat` + `/v1/agents/tasks` → 调用配置中的 canary WorkPanel → `/v1/agents/tasks/result`。历史 ECS fixture 使用 `:8081`；当前本机 canary 证据使用 `:8082`。
 **不要**把 runner 配到 prod `:8080`（`scripts/wp-runner.js` 会拒）。
 
 ```bash
@@ -118,7 +118,7 @@ journalctl -u wp-runner -n 50 --no-pager -f
 - [ ] `:9080/v1/health` 与 `:80/v1/health` 均为 `ok`  
 - [ ] 无 token 访问 `/v1/envs` → 401  
 - [ ] pet chat → canary 有 messageId（勿对 prod）  
-- [ ] `journalctl` 无持续报错；WP `:8081` 可达  
+- [ ] `journalctl` 无持续报错；`relay.json` 配置的 WorkPanel backend 可达
 - [ ] homepage `:80/` 非 `/v1` 路径仍正常（方案 B）  
 
 门禁（发版前）：`npm test` · `npm run test:relay` · 可选 `npm run test:e2e-resume`。

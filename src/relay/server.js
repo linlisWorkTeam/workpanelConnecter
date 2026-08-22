@@ -1,7 +1,7 @@
 import http from 'node:http';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { runtimeRoot } from '../runtimeRoot.js';
 import { authenticateRequest } from './authPet.js';
 import { createHandlers } from './handlers.js';
 import { openDb, getDbPath, closeDb } from './db.js';
@@ -14,8 +14,7 @@ import { enforceRetention } from './retention.js';
 import { logEvent } from './structuredLogger.js';
 import { validateFederationClientConfig } from './federationClient.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-export const ROOT = path.resolve(__dirname, '../..');
+export const ROOT = runtimeRoot(import.meta.url, 2);
 
 export function loadRelayConfig(configPath) {
   const resolved = path.resolve(

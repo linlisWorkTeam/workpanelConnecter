@@ -1,10 +1,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { DatabaseSync } from 'node:sqlite';
 import { applyMigrations } from './migrations.js';
-
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
 let _db = null;
 let _writeChain = Promise.resolve();

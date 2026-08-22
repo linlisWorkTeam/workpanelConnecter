@@ -1,5 +1,7 @@
 # WorkPet × Connecter 中继 Implementation Plan
 
+> 文档状态：已执行的历史实施计划。未勾选项和阶段描述不代表当前缺口；当前状态见 `docs/P0-P3-IMPLEMENTATION-STATUS.md`。
+
 > **Status (2026-08-07):** Phase **0–4 已完成**（HEAD `f7db1bc`）。Phase **5 未开始** → 见 `docs/NEXT-DEV-PATH.md`。  
 > 下方 Task 勾选为历史执行清单；以 ROADMAP / NEXT / E2E 清单为准。
 

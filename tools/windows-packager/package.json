@@ -1,0 +1,10 @@
+{
+  "name": "workpanel-connecter-windows-packager",
+  "version": "0.2.2",
+  "private": true,
+  "description": "Pinned build-only dependencies for Windows release artifacts",
+  "devDependencies": {
+    "esbuild": "0.25.10",
+    "postject": "1.0.0-alpha.6"
+  }
+}

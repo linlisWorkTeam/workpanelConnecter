@@ -1,11 +1,11 @@
 import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { relayResourceDir } from '../runtimeRoot.js';
 
-const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const DEFAULT_MIGRATIONS_DIR = path.join(__dirname, 'migrations');
-const DEFAULT_SCHEMA_PATH = path.join(__dirname, 'schema.sql');
+const resourceDir = relayResourceDir(import.meta.url);
+const DEFAULT_MIGRATIONS_DIR = path.join(resourceDir, 'migrations');
+const DEFAULT_SCHEMA_PATH = path.join(resourceDir, 'schema.sql');
 
 function checksum(text) {
   return crypto.createHash('sha256').update(text).digest('hex');

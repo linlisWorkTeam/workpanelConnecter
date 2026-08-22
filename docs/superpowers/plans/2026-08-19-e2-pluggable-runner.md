@@ -1,5 +1,7 @@
 # E2 可插拔 Runner Implementation Plan
 
+> 文档状态：已执行的历史实施计划；当前 Runner 契约见 `docs/protocol/runners.md`。
+
 > **For agentic workers:** implement in this repo; do not wait on WP P0/P1.
 
 **Goal:** Generic outbound runner slot, serial+TTL, two-phase `/v1/messages`, live canary WP acceptance (no echo mock).
