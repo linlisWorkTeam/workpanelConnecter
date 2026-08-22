@@ -29,7 +29,7 @@ Evidence: repository source, `config/relay.schema.json`, `package.json`, `src/re
 | `apps/workpet/third-party/live2d/README.md` | 第三方说明 | 路径与许可引用核对 |
 | `apps/workpet/third-party/live2d/CubismWebSamples-LICENSE.md` | 第三方不可改 | 原文保留 |
 | `apps/workpet/third-party/live2d/CubismWebSamples-NOTICE.md` | 第三方不可改 | 原文保留 |
-| `docs/README.md` | 当前 | 新增权威索引与冲突顺序 |
+| `docs/README.md` | 当前 | 指向 Diátaxis 文档首页，并保留旧链接兼容 |
 | `docs/DOCUMENTATION-AUDIT.md` | 当前 | 本报告 |
 | `docs/architecture.md` | 当前 | 从旧纯 CLI 架构重写为 Site/Host/Runner federation |
 | `docs/scheduling-boundaries.md` | 当前 | 重写角色、数据权威和调度不变量 |
@@ -42,7 +42,7 @@ Evidence: repository source, `config/relay.schema.json`, `package.json`, `src/re
 | `docs/protocol/federation-v1.md` | 当前 | envelope、ack/result、目录与安全边界核对 |
 | `docs/protocol/identifiers.md` | 当前 | Site/Subject/GroupRef/trace 稳定性核对 |
 | `docs/P0-P3-IMPLEMENTATION-STATUS.md` | 当前 | 更新到 51 门禁及文档门禁 |
-| `docs/ROADMAP.md` | 当前 | 重写为 P0–P3 已完成、P4 实机验收、P5 adapter |
+| `docs/ROADMAP.md` | 当前 | 兼容入口，正式路线图迁移到 `docs/explanation/roadmap.md` |
 | `docs/NEXT-DEV-PATH.md` | 当前 | 移除 E1/E2/E3 待开发叙述，改为部署验收优先 |
 | `docs/CONNECTER-EVOLUTION.md` | 当前 | 重写为已完成演进与按规模触发 HA |
 | `docs/security-review.md` | 当前 | 默认拒绝、签名、mTLS 与 remaining deployment gate 核对 |
@@ -86,6 +86,18 @@ Evidence: repository source, `config/relay.schema.json`, `package.json`, `src/re
 | `docs/superpowers/plans/2026-08-19-workpet-sprite-customize.md` | 历史计划 | 指向 WorkPet 当前行为 |
 | `docs/superpowers/plans/2026-08-19-workpet-xiaoai-announce.md` | 历史计划 | 指向当前测试行为 |
 | `docs/superpowers/plans/2026-08-21-connecter-p0-p3-evolution.md` | 已完成计划 | 保留为 P0–P3 验收来源 |
+| `CHANGELOG.md` | 当前 | 新增 Keep a Changelog 入口与 Unreleased 区块 |
+| `CONTRIBUTING.md` | 当前 | 新增本地环境、PR 和提交信息指南 |
+| `SECURITY.md` | 当前 | 新增安全报告模板与 secret 处理提醒 |
+| `docs/index.md` | 当前 | 新增 Diátaxis 文档首页 |
+| `docs/tutorials/quickstart.md` | 当前 | 新增可复制的 smoke/Relay 入门教程 |
+| `docs/how-to/README.md` | 当前 | 新增任务式指南入口和预留项 |
+| `docs/explanation/README.md` | 当前 | 新增概念解释入口 |
+| `docs/explanation/roadmap.md` | 当前 | 新增季度计划/Backlog 路线图 |
+| `docs/reference/README.md` | 当前 | 新增参考手册入口 |
+| `docs/reference/cli.md` | 当前 | 新增 CLI 命令参考 |
+| `docs/reference/configuration.md` | 当前 | 新增配置参考 |
+| `docs/reference/api.md` | 当前 | 新增 API 参考入口 |
 
 ## 建议
 
