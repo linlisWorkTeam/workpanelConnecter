@@ -1,15 +1,24 @@
-# CLI reference
+# Connecter operations CLI
 
-| 命令 | 用途 |
-|---|---|
-| `npm start` | 启动交互式 Connecter CLI。 |
-| `npm run relay` | 启动站点 Connecter Relay。 |
-| `npm test` | 运行最小 smoke。 |
-| `npm run test:docs` | 检查 Markdown 链接、命令和当前文档约束。 |
-| `npm run test:release-local` | 运行本地发布门禁。 |
-| `npm run wp-slot` | 注册或续租 WorkPanel backend slot。 |
-| `npm run build:windows` | 在 Windows 上构建 WorkPet 和 Connecter 发布包。 |
+[English](cli.md) · [简体中文](cli.zh-CN.md)
 
-参数、环境变量和返回值以当前 `package.json`、脚本和对应 runbook 为准。
+> Status: current CLI reference; updated 2026-08-22.
 
-<!-- TODO: 根据项目实际补充 `npm start` 交互命令、所有环境变量和退出码。 -->
+`npm start` launches the compatibility interactive CLI. It reads `config/servers.json`, or creates it from `config/servers.example.json` when missing.
+
+| Command | Status | Behavior |
+|---|---|---|
+| `/chat {server} /{team}` | Implemented | Send a prompt to the configured coordinator for a target team |
+| `/show-server` | Implemented | Show reachability from the latest refresh |
+| `/show-team {server} [/{team}]` | Implemented | List teams or show one team |
+| `/refresh` | Implemented | Probe services and coordinators again |
+| `/show-log [N]` | Implemented | Show the latest N dispatch records; default is 10 |
+| `/restart-server` | Stub | Returns `not implemented`; does not restart a server |
+| `/obs {server} [{team}]` | Stub | Returns `not implemented`; HTTP observability is documented in [`observability.md`](../observability.md) |
+
+The CLI is not the authority for cross-site identity or membership. Those responsibilities belong to Site Connecter, Directory, and Connecter Host.
+
+```powershell
+npm start
+npm test
+```

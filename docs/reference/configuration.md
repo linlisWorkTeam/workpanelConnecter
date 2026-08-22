@@ -1,18 +1,25 @@
 # Configuration reference
 
-| 文件/变量 | 用途 |
+[English](configuration.md) · [简体中文](configuration.zh-CN.md)
+
+The machine-readable definition is [`config/relay.schema.json`](../../config/relay.schema.json), and the redacted example is [`config/relay.example.json`](../../config/relay.example.json). A real `config/relay.json` is ignored by Git. Never commit credentials, private keys, or signing keys.
+
+| Field | Purpose |
 |---|---|
-| `config/relay.json` | 本地 Site Connecter 配置，已被 gitignore。 |
-| `config/relay.schema.json` | Relay 配置字段 schema。 |
-| `CONNECTER_RELAY_CONFIG` | 覆盖 Relay 配置文件路径。 |
-| `CONNECTER_RELAY_HOST` | 覆盖监听地址。 |
-| `CONNECTER_RELAY_PORT` | 覆盖监听端口。 |
-| `~/.workpet/config.json` | WorkPet 桌面端本地配置。 |
+| `listen` | HTTP listener; `CONNECTER_RELAY_HOST` and `CONNECTER_RELAY_PORT` can override it |
+| `publicBaseUrl` | URL prefix used in Runner task and heartbeat responses |
+| `db.path` | SQLite file path |
+| `auth.tokens` | Operations API Bearer tokens |
+| `allowProdFromPet` | Whether WorkPet may access `prod` |
+| `rateLimitPerMin` | WorkPet request limit per minute; default 60 |
+| `backends` | Mapping from environment names to WorkPanel HTTP slots |
+| `defaults` | Default environment, group, and coordinator Agent |
+| `pets` | WorkPet identities, tokens, WorkPanel credentials, and group bindings |
+| `runners` | Preconfigured Runners and group bindings |
+| `host` | Site or Host role, peer address, TLS, and signing material |
+| `federation` | Cross-site policy, signing/TLS, retry, TTL, and quota settings |
+| `enrollment` | One-time enrollment codes and device credential TTLs |
 
-常见配置区块：`listen`、`db`、`auth`、`backends`、`defaults`、`host`、`runners`、`pets`、`enrollment` 和 `federation`。
+`host.role` may be `connecter`, `host`, or `standalone`. Production deployments should load TLS and signing material from external files or environment variables and explicitly review federation policies.
 
-完整字段以 [`../../config/relay.schema.json`](../../config/relay.schema.json) 和 [`../relay-config.md`](../relay-config.md) 为准。
-
-安全要求：不要把真实 token、密码、证书、私钥、签名 secret 或 `data/connector.db` 提交到 Git。
-
-<!-- TODO: 根据项目实际补充每个字段的默认值、类型和兼容性矩阵。 -->
+For full field behavior, see [`relay-config.md`](../relay-config.md). Runner, Directory, and Federation contracts are documented under [`protocol/`](../protocol/).

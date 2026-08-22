@@ -1,20 +1,23 @@
-# How-to
+# How-to guides
 
-这里放“如何完成一项具体操作”的短指南。每篇指南应有前置条件、可复制命令、验证方式和失败处理。
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-## 常用入口
+This section contains short task-based guides. Each guide should state prerequisites, provide copyable commands, show how to verify the result, and explain common failure handling.
 
-- [备份与恢复](../runbooks/backup-restore.md)
-- [联邦本地实验室](../runbooks/federation-local-lab.md)
-- [联邦恢复](../runbooks/federation-recovery.md)
-- [滚动升级](../runbooks/rolling-upgrade.md)
-- [安全事件](../runbooks/security-incident.md)
-- [WorkPet 配置](../workpet-config-sample.md)
-- [WorkPet E2E 检查](../workpet-e2e-checklist.md)
+## Common guides
 
-## 预留指南
+- [Backup and restore](../runbooks/backup-restore.md)
+- [Local federation lab](../runbooks/federation-local-lab.md)
+- [Federation recovery](../runbooks/federation-recovery.md)
+- [Rolling upgrade](../runbooks/rolling-upgrade.md)
+- [Security incident response](../runbooks/security-incident.md)
+- [WorkPet configuration](../workpet-config-sample.md)
+- [WorkPet desktop guide](../../apps/workpet/README.en.md)
+- [WorkPet E2E checklist](../workpet-e2e-checklist.md)
 
-- <!-- TODO: 补充“如何创建本地 standalone 配置”。 -->
-- <!-- TODO: 补充“如何注册和检查 Runner”。 -->
-- <!-- TODO: 补充“如何配置 Site Connecter 加入 Host”。 -->
-- <!-- TODO: 补充“如何排查消息未投递”。 -->
+## Planned guides
+
+- <!-- TODO: Add how to create a local standalone configuration. -->
+- <!-- TODO: Add how to register and inspect a Runner. -->
+- <!-- TODO: Add how to configure a Site Connecter to join Host. -->
+- <!-- TODO: Add how to troubleshoot an undelivered message. -->

@@ -1,7 +1,7 @@
-# Roadmap
+# Roadmap compatibility entry
 
-路线图正式入口已迁移到 [`explanation/roadmap.md`](./explanation/roadmap.md)。
+[English](ROADMAP.md) · [简体中文](ROADMAP.zh-CN.md)
 
-本文件保留用于兼容旧链接；请不要在这里新增路线项目。
+The maintained roadmap is [`explanation/roadmap.md`](explanation/roadmap.md). It uses estimated quarters, separates the formal plan from Backlog, and does not make exact-date commitments.
 
-当前本地发布门禁为 51 项，具体证据见 [`P0-P3-IMPLEMENTATION-STATUS.md`](./P0-P3-IMPLEMENTATION-STATUS.md)。
+The current local release suite has 51 gates. See [`P0-P3-IMPLEMENTATION-STATUS.md`](P0-P3-IMPLEMENTATION-STATUS.md) for the current evidence boundary.

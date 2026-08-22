@@ -1,5 +1,7 @@
 # WorkPet Live2D 桌宠（apps/workpet）
 
+[English](README.en.md) · [简体中文](README.md)
+
 WorkPanel 桌宠入口：透明置顶角色 + 展开聊天。形象有两种加载模式：**Live2D**（默认 Cubism）和 **状态动图**（idle/thinking/speaking/error 各一张 webp/png/gif/svg）。右键点角色切换；上传拷到 `~/.workpet/models/` 或 `~/.workpet/skins/`，不进安装目录。UI 名 **WorkPet**；只连自己绑定的 **Connecter**（`/v1/*`），不连 Connecter Host、不直连 WorkPanel。自带剪影 `skin.svg` 是动图默认皮肤，也是 Live2D 加载失败时的降级。
 
 ```

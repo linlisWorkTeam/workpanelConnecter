@@ -1,11 +1,13 @@
 # Explanation
 
-这里解释系统边界、设计取舍、状态和路线，不替代 API 或命令参考。
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-- [Roadmap](./roadmap.md)：正式计划和 Backlog。
-- [当前架构](../architecture.md)：WorkPet、Site Connecter、Host、WorkPanel 和 Runner 的边界。
-- [调度边界](../scheduling-boundaries.md)：站内调度、跨站中继和证据边界。
-- [Connecter 演进](../CONNECTER-EVOLUTION.md)：Host、Directory 和 Federation 的演进说明。
-- [系统设计](../workconnector-system-design.md)：历史设计与协议背景。
+This section explains system boundaries, design choices, status, and roadmap. It is not a replacement for API or command references.
 
-<!-- TODO: 根据项目实际补充“为什么站内消息不绕行 Host”的概念解释。 -->
+- [Roadmap](roadmap.md): formal plans and backlog;
+- [Current architecture](../architecture.md): boundaries between WorkPet, Site Connecter, Host, WorkPanel, and Runner;
+- [Scheduling boundaries](../scheduling-boundaries.md): local scheduling, cross-site relay, and evidence boundaries;
+- [Connecter evolution](../CONNECTER-EVOLUTION.md): the evolution of Host, Directory, and Federation;
+- [System design](../workconnector-system-design.md): historical design and protocol context.
+
+<!-- TODO: Add a user-facing explanation of why site-local messages do not route through Host. -->

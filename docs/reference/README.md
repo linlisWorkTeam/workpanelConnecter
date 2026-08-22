@@ -1,11 +1,13 @@
 # Reference
 
-参考手册用于查找稳定的命令、配置字段和接口，不承担教程或设计解释。
+[English](README.md) · [简体中文](README.zh-CN.md)
 
-- [CLI](./cli.md)
-- [配置](./configuration.md)
-- [API](./api.md)
-- [现有 Relay API 详细契约](../api-relay.md)
-- [现有协议目录](../protocol/)
+Reference pages are for stable commands, configuration fields, and interfaces. They do not replace tutorials or design explanations.
 
-<!-- TODO: 根据项目实际补充版本化参考文档的发布策略。 -->
+- [CLI](cli.md)
+- [Configuration](configuration.md)
+- [API](api.md)
+- [Detailed Relay API contract](../api-relay.md)
+- [Protocol directory](../protocol/)
+
+<!-- TODO: Confirm the versioning and release policy for reference pages. -->

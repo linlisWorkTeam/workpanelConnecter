@@ -1,64 +1,69 @@
 # Quickstart
 
-本教程从干净检出开始，运行最小 smoke 测试，再启动一个本地 Site Connecter。它不需要真实 WorkPanel、真实 token 或 Connecter Host。
+[English](quickstart.md) · [简体中文](quickstart.zh-CN.md)
 
-## 1. 准备 Node.js
+This tutorial starts from a clean checkout, runs the smallest smoke test, and starts a local Site Connecter. It does not require a real WorkPanel, real tokens, or a Connecter Host.
 
-安装 Node.js 18 或更高版本。运行 Relay、SQLite 和完整测试时建议使用 Node.js 22.5 或更高版本。
+## 1. Install Node.js
+
+Use Node.js 18 or newer. Node.js 22.5 or newer is recommended for Relay, SQLite, and the full test suite.
 
 ```bash
 node --version
 npm --version
 ```
 
-## 2. 获取项目并运行 smoke
+## 2. Clone and run the smoke test
 
 ```bash
 git clone https://github.com/linlisWorkTeam/workpanelConnecter.git
 cd workpanelConnecter
+npm install
 npm test
 ```
 
-成功时会看到：
+Success includes:
 
 ```text
 SMOKE_OK
 GATE_OK
 ```
 
-这个 smoke 使用仓库内 mock，不会访问生产 WorkPanel。
+The smoke test uses repository mocks and does not contact a production WorkPanel.
 
-## 3. 准备站点 Connecter 配置
+## 3. Prepare Site Connecter configuration
 
-复制示例配置，不要修改示例文件：
+Copy the example configuration. Do not edit or commit the example file:
 
 ```bash
 cp config/relay.example.json config/relay.json
 ```
 
-Windows PowerShell：
+Windows PowerShell:
 
 ```powershell
 Copy-Item config/relay.example.json config/relay.json
 ```
 
-至少检查以下字段：
+At minimum, inspect these fields:
 
-- `listen.port`：本地默认可用 `9080`；
-- `backends.canary.baseUrl`：本站 WorkPanel canary 地址；
-- `pets[].token`、`runners[].token` 和 `auth.tokens`：仅使用本地测试值；
-- `host`：没有 Host 实验时使用 `role: standalone`；
-- `allowProdFromPet`：默认保持 `false`。
+- `listen.port`: use `9080` for local development;
+- `backends.canary.baseUrl`: the WorkPanel canary address for this site;
+- `pets[].token`, `runners[].token`, and `auth.tokens`: local test values only;
+- `host`: use `role: standalone` when no Host experiment is configured;
+- `allowProdFromPet`: keep the default `false` unless production access is explicitly reviewed.
 
-配置字段详见 [`../reference/configuration.md`](../reference/configuration.md) 和 [`../relay-config.md`](../relay-config.md)。
+See the [configuration reference](../reference/configuration.md) and the [detailed relay configuration](../relay-config.md).
 
-## 4. 启动 Relay
+## 4. Start Relay
 
 ```bash
-CONNECTER_RELAY_CONFIG=config/relay.json CONNECTER_RELAY_PORT=9080 npm run relay
+CONNECTER_RELAY_CONFIG="$PWD/config/relay.json" \
+CONNECTER_RELAY_PORT=9080 \
+npm run relay
 ```
 
-PowerShell：
+PowerShell:
 
 ```powershell
 $env:CONNECTER_RELAY_CONFIG = (Resolve-Path config/relay.json).Path
@@ -66,13 +71,13 @@ $env:CONNECTER_RELAY_PORT = "9080"
 npm run relay
 ```
 
-另开一个终端检查健康状态：
+In another terminal, check health:
 
 ```bash
 curl http://127.0.0.1:9080/v1/health
 ```
 
-## 5. 运行相关门禁
+## 5. Run focused gates
 
 ```bash
 npm run test:docs
@@ -80,16 +85,17 @@ npm run test:relay-unit
 npm run test:runner
 ```
 
-完整本地发布门禁：
+The full local release gate is:
 
 ```bash
 npm run test:release-local
 ```
 
-## 6. 下一步
+## 6. Continue with an integration
 
-- 具体配置问题：看 [How-to](../how-to/README.md)。
-- API、CLI 和配置字段：看 [Reference](../reference/README.md)。
-- 站点/Host 边界和路线：看 [Explanation](../explanation/README.md)。
+- [How-to guides](../how-to/README.md) for task-based operations;
+- [Reference](../reference/README.md) for CLI, configuration, and API details;
+- [Explanation](../explanation/README.md) for site/Host boundaries and roadmap;
+- [WorkPet setup](../../apps/workpet/README.md) for desktop development.
 
-<!-- TODO: 根据项目实际补充真实 canary 的安全登录和 WorkPet 桌面验收步骤。 -->
+<!-- TODO: Add the real canary security-login and WorkPet desktop acceptance steps after they are confirmed. -->

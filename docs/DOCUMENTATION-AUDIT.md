@@ -98,6 +98,27 @@ Evidence: repository source, `config/relay.schema.json`, `package.json`, `src/re
 | `docs/reference/cli.md` | 当前 | 新增 CLI 命令参考 |
 | `docs/reference/configuration.md` | 当前 | 新增配置参考 |
 | `docs/reference/api.md` | 当前 | 新增 API 参考入口 |
+| `README.zh-CN.md` | 当前 | README 简体中文 I18N 镜像 |
+| `CONTRIBUTING.en.md` | 当前 | 贡献指南英文 I18N 镜像 |
+| `SECURITY.en.md` | 当前 | 安全指南英文 I18N 镜像 |
+| `apps/workpet/README.en.md` | 当前 | WorkPet 桌面指南英文 I18N 镜像 |
+| `docs/README.zh-CN.md` | 当前 | 文档索引简体中文 I18N 镜像 |
+| `docs/ROADMAP.zh-CN.md` | 当前 | 路线图兼容入口简体中文 I18N 镜像 |
+| `docs/index.zh-CN.md` | 当前 | 文档首页简体中文 I18N 镜像 |
+| `docs/tutorials/quickstart.zh-CN.md` | 当前 | 入门教程简体中文 I18N 镜像 |
+| `docs/how-to/README.zh-CN.md` | 当前 | 操作指南简体中文 I18N 镜像 |
+| `docs/explanation/README.zh-CN.md` | 当前 | 概念解释简体中文 I18N 镜像 |
+| `docs/explanation/roadmap.zh-CN.md` | 当前 | 路线图简体中文 I18N 镜像 |
+| `docs/reference/README.zh-CN.md` | 当前 | 参考手册简体中文 I18N 镜像 |
+| `docs/reference/cli.zh-CN.md` | 当前 | CLI 参考简体中文 I18N 镜像 |
+| `docs/reference/configuration.zh-CN.md` | 当前 | 配置参考简体中文 I18N 镜像 |
+| `docs/reference/api.zh-CN.md` | 当前 | API 参考简体中文 I18N 镜像 |
+| `docs/runbooks/backup-restore.zh-CN.md` | 当前 | 备份恢复指南简体中文 I18N 镜像 |
+| `docs/runbooks/federation-local-lab.zh-CN.md` | 当前 | 联邦实验室指南简体中文 I18N 镜像 |
+| `docs/runbooks/federation-recovery.zh-CN.md` | 当前 | 联邦恢复指南简体中文 I18N 镜像 |
+| `docs/runbooks/on-call.zh-CN.md` | 当前 | 值班指南简体中文 I18N 镜像 |
+| `docs/runbooks/rolling-upgrade.zh-CN.md` | 当前 | 滚动升级指南简体中文 I18N 镜像 |
+| `docs/runbooks/security-incident.zh-CN.md` | 当前 | 安全事件指南简体中文 I18N 镜像 |
 
 ## 建议
 
