@@ -1,40 +1,39 @@
 # Roadmap
 
-本路线图只记录方向和维护者已确认的计划。季度是预估，不是承诺日期；具体发布内容以版本、CHANGELOG 和发布门禁为准。
+[English](roadmap.md) · [简体中文](roadmap.zh-CN.md)
 
-## 已发布
+This roadmap uses estimated quarters, not fixed delivery dates. A formal plan is not a promise; move an item to Backlog when evidence, capacity, or dependencies change.
 
-### v0.2.x
+## Shipped baseline
 
-- Site Connecter Relay、Runner lease/fencing、Directory v2、enrollment、durable federation 和安全运维能力已在本地证据边界内实现。
-- WorkPet 安装器、Connecter 便携包和文档门禁已提供。
+- v0.2.x: Site Connecter, Runner lease and fencing, Directory v2, enrollment, durable federation, signing and mTLS client support are implemented within the local evidence boundary;
+- v0.2.3: WorkPet NSIS installer, Connecter portable Windows package, checksums, and the documentation/release gate are available.
 
-详情见 [`../P0-P3-IMPLEMENTATION-STATUS.md`](../P0-P3-IMPLEMENTATION-STATUS.md) 和 [`../../CHANGELOG.md`](../../CHANGELOG.md)。
+## Formal plan
 
-## 正式计划
+### v0.3.x — estimated 2026 Q3
 
-### v0.3.x（预计 2026 Q3，待维护者确认）
+- Prove a real two-site deployment with an independent Connecter Host;
+- Complete production CA/mTLS operations, key rotation, external alerting, and long-duration soak evidence;
+- Complete Windows Authenticode signing for release artifacts.
 
-- 完成真实双 Site + 独立 Host 的网络部署验收。
-- 完成生产 CA/mTLS、密钥轮换、外部告警和长时 soak 证据。
-- 完成 Windows Authenticode 签名所需的发布流程。
+### v0.4.x — estimated 2026 Q4
 
-### v0.4.x（预计 2026 Q4，待维护者确认）
+- Define a stable adapter contract for additional WorkPanel-compatible backends;
+- Improve WorkPet onboarding and update guidance based on real user validation.
 
-- 评估统一 Runner/WorkPanel/其他 runtime 的 adapter contract。
-- 改善 WorkPet 首次配置、更新和安装体验。
+## Backlog — needs evaluation
 
-## Backlog（待评估）
+- Host high availability, external database/queue, or Raft-based coordination if the single-Host boundary becomes a measured bottleneck;
+- WebSocket or SSE delivery when polling is no longer sufficient;
+- Additional A2A/ACP adapter integrations after their contracts and security boundaries are reviewed.
 
-- Host HA、外置数据库/队列或 Raft/etcd；只有单 Host 成为实际 SLA/容量瓶颈时再评估。
-- WebSocket/SSE；当前 `since` 轮询仍是兼容接口。
-- 更多 A2A/ACP runtime 适配器。
+## Maintenance rules
 
-## 维护规则
+- Use estimated quarters only; do not write an exact date as a commitment;
+- Keep Formal plan and Backlog separate;
+- Link each shipped item to code, tests, or release evidence;
+- Move completed items to the shipped baseline and record deferred items with a reason;
+- Confirm roadmap changes with maintainers before changing the quarter.
 
-- 新增项目必须放入“正式计划”或“Backlog”，不得混写。
-- 正式计划只写预计季度，不写死发布日期。
-- 已完成事项必须有代码、测试或发布证据链接。
-- 版本发布后同步更新 `CHANGELOG.md`，并把未完成项目移回正确的计划区。
-
-<!-- TODO: 根据项目实际补充维护者确认的版本目标和季度。 -->
+<!-- TODO: Confirm the owner and quarter for each formal-plan item. -->

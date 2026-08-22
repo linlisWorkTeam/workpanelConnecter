@@ -1,5 +1,7 @@
 # Contributing
 
+[English](CONTRIBUTING.en.md) · [简体中文](CONTRIBUTING.md)
+
 感谢贡献 WorkPanelConnecter。请保持改动小、可验证，并遵守项目的 Connecter/Connecter Host 命名和文档分类约定。
 
 ## Local setup

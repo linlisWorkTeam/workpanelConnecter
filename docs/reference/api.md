@@ -1,14 +1,18 @@
 # API reference
 
-当前完整 Relay HTTP 契约见 [`../api-relay.md`](../api-relay.md)。主要接口组：
+[English](api.md) · [简体中文](api.zh-CN.md)
 
-- 健康与环境：`GET /v1/health`、`GET /v1/envs`；
-- WorkPet 群和消息：`/v1/auth/login`、`/v1/groups*`、`POST /v1/chat`、`GET /v1/messages`、`GET /v1/runs/:id`；
-- Runner：`/v1/agents/*`；
-- Directory/enrollment：`/v2/*`；
-- Federation：`/v1/federation/*`；
-- 运维：`/v1/ops/*`。
+This page is a map of the implemented API groups. Use the detailed protocol documents for request and response contracts.
 
-所有非 health/login 请求的鉴权、状态码、幂等规则和请求体请以详细契约与当前代码为准。
+| Area | Main endpoints | Authentication |
+|---|---|---|
+| Health and session | `/v1/health`, `/v1/auth/login`, `/v1/session/revoke` | Health is public; session endpoints use configured credentials |
+| WorkPanel relay | `/v1/envs`, `/v1/groups`, `/v1/chat`, `/v1/messages`, `/v1/runs/` | WorkPet or operations token |
+| Runner | `/v1/agents/register`, `/v1/agents/heartbeat`, `/v1/agents/tasks*` | Runner token or enrollment credential |
+| Directory and enrollment | `/v2/enrollments`, `/v2/directory/*`, `/v2/routes/explain` | Operations or site identity |
+| Federation | `/v1/host/*`, `/v1/federation/*` | Site/Host peer identity, TLS, and policy |
+| Operations | `/v1/ops/*` | Operations token |
 
-<!-- TODO: 根据项目实际补充 OpenAPI 之外的稳定响应示例和错误码索引。 -->
+Detailed contracts: [`api-relay.md`](../api-relay.md), [`runners.md`](../protocol/runners.md), [`directory-v2.md`](../protocol/directory-v2.md), and [`federation-v1.md`](../protocol/federation-v1.md).
+
+<!-- TODO: Add versioned request/response examples after the public API compatibility policy is confirmed. -->

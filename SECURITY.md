@@ -1,5 +1,7 @@
 # Security policy
 
+[English](SECURITY.en.md) · [简体中文](SECURITY.md)
+
 ## Reporting a vulnerability
 
 请不要在公开 Issue、讨论区或提交信息中披露未修复的安全问题。
