@@ -147,6 +147,49 @@ try {
   assert.equal(cancelReplay.status, 200);
   assert.equal(cancelReplay.body.idempotent, true);
 
+  // A provider running on Connecter Host must queue directly for the remote
+  // Site. It has no Host-as-peer token and therefore cannot use the Site
+  // outbox/HTTP loopback path.
+  const remoteSiteId = 'site-remote';
+  const remoteSubjectId = '11111111-1111-5111-8111-111111111111';
+  config.host = {
+    role: 'host', siteId: 'site-test',
+    peers: [{ siteId: remoteSiteId, token: 'unit-remote-peer-token-only' }],
+  };
+  config.federation = {
+    enabled: true,
+    requireSignatures: true,
+    policies: [{
+      originSite: 'site-test', targetSite: remoteSiteId, groupRef,
+      subjectId: remoteSubjectId, operation: 'chat.command', direction: 'outbound', effect: 'allow',
+    }],
+  };
+  config.workpanelServices[0].targetSubjectIds = [remoteSubjectId];
+  db().prepare(
+    `INSERT INTO federation_routes
+     (id,group_ref,subject_id,display_name,site_id,capabilities_json,status,expires_at)
+     VALUES ('provider-remote-route',?,?,?,?,?,'active',datetime('now','+90 seconds'))`
+  ).run(groupRef, remoteSubjectId, 'Remote Codex', remoteSiteId, JSON.stringify(['codex']));
+  const remote = await request('POST', '/v2/dispatches', {
+    token: serviceToken,
+    body: { ...dispatchBody, targetSubjectId: remoteSubjectId, prompt: 'Run on remote Site.' },
+    idempotencyKey: 'provider-dispatch-remote-1',
+  });
+  assert.equal(remote.status, 202);
+  assert.equal(remote.body.status, 'federating');
+  const remoteMessageId = db().prepare(
+    `SELECT federation_message_id FROM workpanel_dispatches WHERE id=?`
+  ).get(remote.body.dispatchId).federation_message_id;
+  const queuedRemote = db().prepare(
+    `SELECT m.origin_site,m.target_site,m.envelope_json,d.status
+     FROM federation_messages m JOIN federation_deliveries d ON d.federation_id=m.id
+     WHERE m.message_id=?`
+  ).get(remoteMessageId);
+  assert.equal(queuedRemote.origin_site, 'site-test');
+  assert.equal(queuedRemote.target_site, remoteSiteId);
+  assert.equal(queuedRemote.status, 'queued');
+  assert.equal(JSON.parse(queuedRemote.envelope_json).keyId, 'peer-token-v1');
+
   console.log('WORKPANEL_DISPATCH_API_OK');
 } finally {
   if (server) await new Promise((resolve) => server.close(resolve));

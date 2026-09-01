@@ -1,9 +1,10 @@
 import { randomUUID } from 'node:crypto';
 import { db, writeTx } from './db.js';
 import { hashToken } from './registry.js';
-import { validateFederationEnvelope } from './contracts/federation.js';
-import { hostRole } from './hostPeers.js';
-import { hasOnlyExternalSigningKeys, peerVerificationKeys, verifyFederationEnvelopeSignature } from './envelopeSignature.js';
+import { createFederationEnvelope, validateFederationEnvelope } from './contracts/federation.js';
+import { hostRole, provisionedHostPeer } from './hostPeers.js';
+import { siteIdFor } from './directory.js';
+import { hasOnlyExternalSigningKeys, peerVerificationKeys, signFederationEnvelope, verifyFederationEnvelopeSignature } from './envelopeSignature.js';
 import { authorizeFederation } from './accessPolicy.js';
 import { appendAudit } from './auditLog.js';
 import { checkFederationQuota } from './quotas.js';
@@ -28,6 +29,99 @@ function assertHost(config) {
   }
   if (config?.federation?.enabled === false) return { status: 503, body: { error: 'federation disabled', code: 'FEDERATION_DISABLED' } };
   return null;
+}
+
+/**
+ * Queue a Host-originated envelope without pretending that the Host is one of
+ * its own Site peers. The target Site's provisioned secret signs the envelope,
+ * matching the credential that Site already uses to authenticate to this Host.
+ */
+export function enqueueHostFederationMessage(config, input) {
+  const roleError = assertHost(config);
+  if (roleError) {
+    const error = new Error(roleError.body.error);
+    error.code = roleError.body.code || 'NOT_HOST';
+    throw error;
+  }
+  const unsigned = createFederationEnvelope({ originSite: siteIdFor(config), ...input });
+  const targetPeer = provisionedHostPeer(config, unsigned.targetSite);
+  if (!targetPeer) {
+    const error = new Error('target Site is not provisioned on Connecter Host');
+    error.code = 'FEDERATION_TARGET_NOT_PROVISIONED';
+    throw error;
+  }
+  const policy = authorizeFederation(config, {
+    originSite: unsigned.originSite,
+    targetSite: unsigned.targetSite,
+    groupRef: unsigned.groupRef,
+    subjectId: unsigned.toSubject,
+    operation: unsigned.kind,
+    direction: 'outbound',
+    capabilities: unsigned.payload?.requiredCapabilities || unsigned.payload?.capability,
+    dataClassification: unsigned.payload?.dataClassification || 'internal',
+  });
+  if (!policy.allowed) {
+    const error = new Error('federation policy denied');
+    error.code = 'FEDERATION_DENIED';
+    throw error;
+  }
+  let envelope = unsigned;
+  if (config?.federation?.requireSignatures !== false) {
+    if (config?.federation?.requireSeparateSigningKey && !targetPeer.keys?.length) {
+      throw new Error('separate federation signing key required');
+    }
+    if (config?.federation?.requireExternalSigningKey && !hasOnlyExternalSigningKeys(targetPeer)) {
+      throw new Error('external federation signing key required');
+    }
+    const keys = peerVerificationKeys(targetPeer);
+    const signingKey = keys.find((item) => item.status === 'active') || keys.find((item) => item.status !== 'revoked');
+    envelope = signFederationEnvelope(unsigned, signingKey || {});
+  }
+  const quota = checkFederationQuota(config, envelope.targetSite, Buffer.byteLength(JSON.stringify(envelope)), {
+    requestSiteId: envelope.originSite,
+  });
+  if (!quota.allowed) {
+    const error = new Error('federation backpressure');
+    error.code = quota.reason;
+    throw error;
+  }
+  return writeTx((database) => {
+    const existing = database
+      .prepare(`SELECT envelope_json FROM federation_messages WHERE origin_site=? AND message_id=?`)
+      .get(envelope.originSite, envelope.messageId);
+    if (existing) {
+      if (existing.envelope_json !== JSON.stringify(envelope)) {
+        const error = new Error('messageId envelope conflict');
+        error.code = 'FEDERATION_ID_CONFLICT';
+        throw error;
+      }
+      return envelope;
+    }
+    const id = `fed_${envelope.originSite}_${envelope.messageId}`;
+    database
+      .prepare(
+        `INSERT INTO federation_messages
+         (id, origin_site, message_id, target_site, group_ref, kind, envelope_json, state, expires_at, policy_version)
+         VALUES (?, ?, ?, ?, ?, ?, ?, 'accepted', ?, ?)`
+      )
+      .run(id, envelope.originSite, envelope.messageId, envelope.targetSite, envelope.groupRef, envelope.kind,
+        JSON.stringify(envelope), envelope.expiresAt, policy.policyVersion);
+    database
+      .prepare(
+        `INSERT INTO federation_deliveries
+         (id, federation_id, target_site, status, max_attempts, policy_version)
+         VALUES (?, ?, ?, 'queued', ?, ?)`
+      )
+      .run(`fdel_${randomUUID()}`, id, envelope.targetSite, maxAttempts(config), policy.policyVersion);
+    appendAudit({ eventType: 'federation.host_enqueue', outcome: 'allow', actor: envelope.fromSubject,
+      siteId: envelope.originSite, subjectId: envelope.toSubject, traceId: envelope.traceId,
+      correlationId: envelope.correlationId, messageId: envelope.messageId, policyVersion: policy.policyVersion,
+      detail: { targetSite: envelope.targetSite, kind: envelope.kind } });
+    recordTelemetry({ eventName: 'federation.host.enqueue', siteId: envelope.originSite, traceId: envelope.traceId,
+      correlationId: envelope.correlationId, messageId: envelope.messageId, subjectId: envelope.toSubject,
+      detail: { targetSite: envelope.targetSite, kind: envelope.kind } });
+    return envelope;
+  });
 }
 
 export function acceptFederationMessage(config, peer, input) {
