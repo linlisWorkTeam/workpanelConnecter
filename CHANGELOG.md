@@ -16,7 +16,9 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Fixed
 
-- <!-- TODO: 发布新版本前填写修复内容。 -->
+- Relay dispatch now gives WorkPanel login up to 15 seconds, preventing healthy canary requests from failing when authentication takes slightly longer than the 5-second health-probe budget.
+- Documentation consistency checks now ignore local `.linlis` runtime memory, so ignored machine state cannot break repository gates.
+- Migration checksums are now stable across LF/CRLF checkouts while accepting legacy raw checksums; the migration copy gate now covers migration 013 and rolls back an intentional 014 failure.
 
 ## [0.2.3] - 2026-08-22
 

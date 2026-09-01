@@ -3,7 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const ignoredDirs = new Set(['.git', '.superpowers', 'node_modules', 'target', 'dist', 'data']);
+const ignoredDirs = new Set(['.git', '.linlis', '.superpowers', 'node_modules', 'target', 'dist', 'data']);
 
 function walk(dir) {
   return fs.readdirSync(dir, { withFileTypes: true }).flatMap((entry) => {

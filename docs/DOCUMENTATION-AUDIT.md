@@ -70,6 +70,7 @@ Evidence: repository source, `config/relay.schema.json`, `package.json`, `src/re
 | `docs/releases/v0.2.2.md` | release 快照 | Windows 二进制交付与 50 门禁证据 |
 | `docs/releases/v0.2.3.md` | release 快照 | 全文档审查、51 门禁与 Windows 二进制交付 |
 | `docs/epitaph/README.md` | 交接索引 | 新增本轮 active 交接 |
+| `docs/epitaph/2026-09-02-self-marketing-joint-acceptance.md` | 当前交接 | 固化 ECS canary、远程 Runner 与登录 timeout 修复证据 |
 | `docs/epitaph/2026-08-22-documentation-audit.md` | 当前交接 | 固化本轮架构、门禁与剩余部署证据 |
 | `docs/epitaph/2026-08-19-workpet-connected-space.md` | 历史交接 | 标注后续 federation 已实现 |
 | `docs/epitaph/2026-08-20-workpet-appearance-login.md` | 历史交接 | 标注后续 federation 已实现 |

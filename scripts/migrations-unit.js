@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { closeDb, openDb } from '../src/relay/db.js';
+import { loadMigrations } from '../src/relay/migrations.js';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'connecter-migrations-'));
 
@@ -12,6 +13,14 @@ function columns(database, table) {
 }
 
 try {
+  const lfDir = path.join(root, 'lf-migrations');
+  const crlfDir = path.join(root, 'crlf-migrations');
+  fs.mkdirSync(lfDir);
+  fs.mkdirSync(crlfDir);
+  fs.writeFileSync(path.join(lfDir, '001-line-endings.sql'), 'SELECT 1;\nSELECT 2;\n');
+  fs.writeFileSync(path.join(crlfDir, '001-line-endings.sql'), 'SELECT 1;\r\nSELECT 2;\r\n');
+  assert.equal(loadMigrations(lfDir)[0].checksum, loadMigrations(crlfDir)[0].checksum);
+
   const freshPath = path.join(root, 'fresh.db');
   let database = openDb(freshPath);
   assert.deepEqual(

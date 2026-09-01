@@ -16,6 +16,6 @@ try {
   fs.copyFileSync(backup, path.join(root, 'restored.db'));
   openDb(path.join(root, 'restored.db'));
   assert.equal(db().prepare(`SELECT name FROM pets WHERE id='pet-backup'`).get().name, 'Backup Pet');
-  assert.equal(db().prepare(`SELECT MAX(version) version FROM schema_migrations`).get().version, 12);
+  assert.equal(db().prepare(`SELECT MAX(version) version FROM schema_migrations`).get().version, 13);
   console.log('BACKUP_RESTORE_E2E_OK');
 } finally { closeDb(); fs.rmSync(root, { recursive: true, force: true }); }

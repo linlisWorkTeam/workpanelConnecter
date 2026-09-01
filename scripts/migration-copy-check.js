@@ -37,7 +37,7 @@ try {
     .prepare(`SELECT version FROM schema_migrations ORDER BY version`)
     .all()
     .map((row) => row.version);
-  assert.deepEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+  assert.deepEqual(versions, [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]);
   closeDb();
 
   const migrationDir = path.join(root, 'migrations');
@@ -55,10 +55,11 @@ try {
     '010-inbox-retry-audit-retention.sql',
     '011-runner-protocol-version.sql',
     '012-policy-capability.sql',
+    '013-workpanel-service-dispatch.sql',
   ]) {
     fs.copyFileSync(path.resolve('src/relay/migrations', name), path.join(migrationDir, name));
   }
-  fs.writeFileSync(path.join(migrationDir, '013-intentional-failure.sql'), 'THIS IS NOT VALID SQL;');
+  fs.writeFileSync(path.join(migrationDir, '014-intentional-failure.sql'), 'THIS IS NOT VALID SQL;');
 
   raw = new DatabaseSync(copy);
   const beforeFailure = counts(raw);
@@ -71,7 +72,7 @@ try {
   assert(fs.readdirSync(root).filter((name) => name.startsWith('connector.db.backup-')).length > backupsBeforeFailure,
     'failed migration preserves a pre-migration backup');
   assert.equal(
-    raw.prepare(`SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 13`).get().n,
+    raw.prepare(`SELECT COUNT(*) AS n FROM schema_migrations WHERE version = 14`).get().n,
     0,
     'failed migration is not recorded'
   );
