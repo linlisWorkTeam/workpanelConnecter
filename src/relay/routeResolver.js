@@ -81,7 +81,55 @@ export function resolveRoute({
       missing: verdict.missing || [],
     };
   });
-  const ambiguousSubject = !targetSubjectId && Boolean(agentName) && new Set(rows.map((row) => row.subject_id)).size > 1;
+
+  let federationSql =
+    `SELECT id, group_ref, subject_id, display_name, site_id, capabilities_json,
+            status, expires_at, datetime('now') AS now
+     FROM federation_routes
+     WHERE group_ref=? AND status='active'`;
+  const federationParams = [groupRef];
+  if (targetSubjectId) {
+    federationSql += ' AND subject_id=?';
+    federationParams.push(targetSubjectId);
+  } else if (agentName) {
+    federationSql += ' AND display_name=?';
+    federationParams.push(agentName);
+  }
+  const represented = new Set(considered.map((item) => `${item.siteId}\0${item.subjectId}`));
+  const federationRows = database.prepare(federationSql).all(...federationParams);
+  for (const row of federationRows) {
+    if (represented.has(`${row.site_id}\0${row.subject_id}`)) continue;
+    let advertised = [];
+    try { advertised = JSON.parse(row.capabilities_json || '[]'); } catch {}
+    const capabilities = advertised.map((item) =>
+      typeof item === 'string'
+        ? { name: item, version: '1' }
+        : { name: String(item?.name || ''), version: String(item?.version || '1') }
+    ).filter((item) => item.name);
+    const verdict = evaluateRouteCandidate({
+      membership: { status: 'active', role: 'member' },
+      endpoint: { status: 'active', expires_at: row.expires_at, now: row.now },
+      capabilities,
+      requiredCapabilities: requiredCapabilities.map((name) => String(name).toLowerCase()),
+    });
+    considered.push({
+      subjectId: row.subject_id,
+      endpointId: `federation:${row.id}`,
+      siteId: row.site_id,
+      localId: null,
+      displayName: row.display_name,
+      runtime: 'federation',
+      maxConcurrency: 1,
+      load: 0,
+      labels: { federation: true },
+      capabilities,
+      allowed: verdict.allowed,
+      reason: verdict.reason,
+      missing: verdict.missing || [],
+    });
+  }
+  const ambiguousSubject = !targetSubjectId && Boolean(agentName)
+    && new Set(considered.map((item) => item.subjectId)).size > 1;
   const eligible = considered
     .filter((item) => item.allowed)
     .sort((a, b) => {
@@ -95,7 +143,8 @@ export function resolveRoute({
       return a.endpointId.localeCompare(b.endpointId);
     });
   const selected = ambiguousSubject ? null : eligible[0] || null;
-  const offlineOnly = rows.length > 0 && considered.every((item) => ['ENDPOINT_EXPIRED', 'ENDPOINT_OFFLINE'].includes(item.reason));
+  const offlineOnly = considered.length > 0
+    && considered.every((item) => ['ENDPOINT_EXPIRED', 'ENDPOINT_OFFLINE'].includes(item.reason));
   const decision = {
     traceId: trace.traceId,
     groupRef,
@@ -107,7 +156,7 @@ export function resolveRoute({
       ? 'AMBIGUOUS_SUBJECT'
       : selected
       ? selected.siteId === sourceSite ? 'LOCAL_ELIGIBLE_ENDPOINT' : 'REMOTE_ELIGIBLE_ENDPOINT'
-      : rows.length ? offlineOnly ? 'NO_ONLINE_ENDPOINT' : 'NO_ELIGIBLE_ENDPOINT' : 'NO_MATCHING_SUBJECT',
+      : considered.length ? offlineOnly ? 'NO_ONLINE_ENDPOINT' : 'NO_ELIGIBLE_ENDPOINT' : 'NO_MATCHING_SUBJECT',
   };
   recordDecision(database, decision);
   return decision;
