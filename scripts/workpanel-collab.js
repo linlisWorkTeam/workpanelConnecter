@@ -98,6 +98,42 @@ async function listAdapters(server) {
   console.log(JSON.stringify({ canary: server.baseUrl, adapters: body }, null, 2));
 }
 
+async function ensureAgent(server) {
+  const groupKey = arg('--group');
+  const displayName = arg('--ensure-agent');
+  const adapter = arg('--adapter');
+  const roleDescription = arg('--role-description', 'External Agent via WorkPanelConnecter (canary identity only)');
+  if (!groupKey || !displayName || !adapter) {
+    throw new Error('--group, --ensure-agent, and --adapter are required');
+  }
+  if (adapter === 'mock' && !has('--poc-identity')) {
+    throw new Error('REFUSE: mock may only be used with explicit --poc-identity for a Connecter-triggered canary identity');
+  }
+  const { group } = await resolveGroup(server, groupKey);
+  const existing = group.members.find((member) => member.kind === 'agent' && member.displayName === displayName);
+  if (existing) {
+    console.log(JSON.stringify({ created: false, existing: true, member: { id: existing.id, displayName, adapter: existing.adapter } }, null, 2));
+    return;
+  }
+  const session = await wpSession(server);
+  const response = await fetch(`${server.baseUrl}/api/groups/${encodeURIComponent(group.id)}/members`, {
+    method: 'POST',
+    headers: { authorization: `Bearer ${session.token}`, 'content-type': 'application/json' },
+    body: JSON.stringify({
+      groupId: group.id,
+      kind: 'agent',
+      displayName,
+      roleDescription,
+      adapter,
+      executablePath: '',
+    }),
+  });
+  const body = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(`add Agent failed HTTP ${response.status}: ${body.error || 'unknown'}`);
+  const member = body.member || body;
+  console.log(JSON.stringify({ created: true, member: { id: member.id, displayName: member.displayName, adapter: member.adapter }, canaryOnly: true }, null, 2));
+}
+
 function nonEmptyMessageText(content) {
   const text = extractWpMessageText(content).trim();
   if (!text) return '';
@@ -208,6 +244,7 @@ async function main() {
   const server = loadServer(url);
   if (has('--list')) return list(server);
   if (has('--adapters')) return listAdapters(server);
+  if (arg('--ensure-agent')) return ensureAgent(server);
   if (has('--history')) return history(server);
   return send(server);
 }
