@@ -21,6 +21,11 @@ try {
     toSubject: stableSubjectId({ siteId: 'site-b', kind: 'agent', localId: 'r1' }), kind: 'chat.command' });
   const signed = signFederationEnvelope(envelope, { keyId: 'active', secret: 'secret-a' });
   assert.equal(verifyFederationEnvelopeSignature(signed, [{ keyId: 'active', secret: 'secret-a' }]), true);
+  const jsonRoundTrip = JSON.parse(JSON.stringify(signFederationEnvelope(
+    { ...envelope, payload: { content: 'round-trip', optional: undefined } },
+    { keyId: 'active', secret: 'secret-a' }
+  )));
+  assert.equal(verifyFederationEnvelopeSignature(jsonRoundTrip, [{ keyId: 'active', secret: 'secret-a' }]), true);
   assert.equal(verifyFederationEnvelopeSignature({ ...signed, payload: { changed: true } }, [{ keyId: 'active', secret: 'secret-a' }]), false);
   assert.equal(verifyFederationEnvelopeSignature(signed, [{ keyId: 'active', secret: 'old', status: 'revoked' }]), false);
   const nextSigned = signFederationEnvelope(envelope, { keyId: 'next', secret: 'secret-next' });

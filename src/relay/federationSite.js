@@ -344,7 +344,7 @@ export async function enqueueFederationRunEvent(config, task, body) {
     fromSubject: stableSubjectId({ siteId: siteIdFor(config), kind: 'agent', localId: task.runner_id }),
     toSubject: fed.fromSubject, kind: 'run.event', correlationId: task.federation_correlation_id,
     causationId: task.federation_message_id, traceId: fed.traceId,
-    payload: { taskId: task.id, originalMessageId: fed.originalMessageId, status: body.status, content: body.content, writeBack: context.writeBack !== false },
+    payload: { taskId: task.id, ...(fed.originalMessageId ? { originalMessageId: fed.originalMessageId } : {}), status: body.status, content: body.content, writeBack: context.writeBack !== false },
   });
 }
 
