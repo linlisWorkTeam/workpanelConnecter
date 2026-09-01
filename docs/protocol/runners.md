@@ -136,3 +136,45 @@ Query `?limit=` 可选，默认 1，最大 50。有 in-flight 时仍 **200** 且
 见 `scripts/wp-runner.js`：register（若动态）→ heartbeat 定时 → POST tasks → ack → 调 WP 或本地执行（必要时 renew）→ result。不要对 Connecter 开入站端口。
 
 配置预配见 `config/relay.schema.json` 的 `runners`。
+
+## 9. Codex CLI Runner
+
+`scripts/codex-runner.js` 是 Windows/Linux 通用的 Codex CLI 适配器。它使用官方非交互模式 `codex exec --json`，prompt 经 stdin 传入，只提取最后一个 `item.completed` 的 `agent_message.text`，并要求同时收到 `turn.completed` 与退出码 0。reasoning、命令输出、文件变更事件及原始 stderr 不会写回群聊。
+
+建议预配：
+
+```json
+{
+  "agentId": "codex-windows11",
+  "token": "<独立短期 runner token>",
+  "agentType": "codex",
+  "runtime": "windows-local",
+  "protocolVersion": 2,
+  "maxConcurrency": 1,
+  "capabilities": [{ "name": "code.execute", "version": "1" }],
+  "bindings": [{
+    "env": "ecs-canary",
+    "groupId": "<WorkPanel group id>",
+    "groupName": "ohMyWorkPanel",
+    "agentName": "Codex-Windows11",
+    "workspace": "D:\\AI\\workpanelConnecter"
+  }],
+  "codex": {
+    "sandbox": "workspace-write",
+    "sessionMode": "ephemeral",
+    "timeoutMs": 900000
+  }
+}
+```
+
+可用以下命令把 Codex 绑定写入 gitignored 的本机配置；脚本会先备份原配置，不打印凭证，并拒绝 `:8080` 生产地址：
+
+```powershell
+npm run codex-runner:provision -- --url http://ECS_HOST:8081 --group-id WORKPANEL_GROUP_ID --workspace D:\repo
+```
+
+运行 `npm run codex-runner -- --check` 只核对本机可执行文件与预配，不调用模型。正式启动用 `npm run codex-runner`；`npm run codex-runner:status` 输出不含凭证的 Relay、Host federation 与 Runner 状态。heartbeat 与 lease renew 在 Codex 子进程运行期间独立执行；本地认定 lease 过期后会终止子进程并拒绝迟到结果。
+
+Codex Runner 默认 `writeBack: true`，适合从 Connecter `/v1/chat` 触发的链路。若由 WorkPanel provider 调 `/v2/dispatches`，provider 固定 `writeBack: false`，由 WorkPanel 自己把 final Agent 消息落库，防止双写。
+
+参考：[OpenAI Codex 非交互模式](https://learn.chatgpt.com/docs/non-interactive-mode)。真实 token、Codex 登录态和 `config/relay.json` 不得提交。

@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { parseGroupRef } from '../services/identityService.js';
 
 export const FEDERATION_PROTOCOL = 'workpanel.connecter.federation/v1';
-export const FEDERATION_KINDS = new Set(['chat.command', 'run.event', 'delivery.receipt']);
+export const FEDERATION_KINDS = new Set(['chat.command', 'run.event', 'run.cancel', 'delivery.receipt']);
 
 function uuid(value, field) {
   const text = String(value || '');

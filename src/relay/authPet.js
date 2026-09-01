@@ -15,6 +15,27 @@ import { findCredentialByToken } from './credentialStore.js';
 
 export { extractBearer, checkBearer as checkBearerLegacy } from './auth.js';
 
+function findWorkpanelService(config, token) {
+  const matches = (config?.workpanelServices || []).filter(
+    (service) => String(service?.token || '') === token
+  );
+  if (matches.length !== 1) return { service: null, conflict: matches.length > 1 };
+  const service = matches[0];
+  const serviceId = String(service.id || service.serviceId || '').trim();
+  if (!serviceId) return { service: null, conflict: true };
+  return {
+    service: {
+      id: serviceId,
+      scopes: Array.isArray(service.scopes) ? service.scopes.map(String) : [],
+      groupRefs: Array.isArray(service.groupRefs) ? service.groupRefs.map(String) : [],
+      targetSubjectIds: Array.isArray(service.targetSubjectIds)
+        ? service.targetSubjectIds.map(String)
+        : [],
+    },
+    conflict: false,
+  };
+}
+
 export function authenticateRequest(
   req,
   config,
@@ -23,6 +44,30 @@ export function authenticateRequest(
   const token = extractBearer(req);
   if (!token) {
     return { ok: false, status: 401, error: 'missing bearer token' };
+  }
+
+  // WorkPanel provider credentials are a separate principal type. A provider
+  // token must never double as a pet, runner, peer, device, or ops credential.
+  const workpanel = findWorkpanelService(config, token);
+  if (workpanel.conflict) {
+    return { ok: false, status: 500, error: 'invalid workpanel service configuration' };
+  }
+  if (workpanel.service) {
+    const collision =
+      (config?.auth?.tokens || []).includes(token) ||
+      Boolean(findSessionByToken(token)) ||
+      Boolean(findRunnerByToken(token)) ||
+      Boolean(findHostPeerByToken(token)) ||
+      Boolean(findCredentialByToken(token));
+    if (collision) {
+      return { ok: false, status: 500, error: 'workpanel service credential conflicts with another principal' };
+    }
+    return {
+      ok: true,
+      kind: 'workpanel-service',
+      service: workpanel.service,
+      client: 'workpanel-service',
+    };
   }
 
   // Prefer pet session (N1)

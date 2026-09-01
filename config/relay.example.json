@@ -11,6 +11,15 @@
   "auth": {
     "tokens": ["dev-ops-token-change-me"]
   },
+  "workpanelServices": [
+    {
+      "id": "ohmyworkpanel-test",
+      "token": "dev-workpanel-service-token-change-me",
+      "scopes": ["dispatch:create", "dispatch:read", "dispatch:cancel"],
+      "groupRefs": ["wp:site-dev:528b36ba-4769-4b4d-9fa8-51e2de132396"],
+      "targetSubjectIds": []
+    }
+  ],
   "allowProdFromPet": false,
   "rateLimitPerMin": 60,
   "backends": {

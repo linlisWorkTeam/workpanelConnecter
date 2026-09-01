@@ -227,6 +227,26 @@ export function createRelayServer(options = {}) {
         return send(res, h.status, h.body);
       }
 
+      if (req.method === 'POST' && pathname === '/v2/dispatches') {
+        const body = await readJson(req);
+        const h = await handlers.workpanelDispatchCreate(auth, body, {
+          idempotencyKey: req.headers['idempotency-key'] || body.idempotencyKey,
+        });
+        return send(res, h.status, h.body);
+      }
+
+      if (pathname.startsWith('/v2/dispatches/')) {
+        const rest = pathname.slice('/v2/dispatches/'.length).split('/');
+        if (rest.length === 1 && rest[0] && req.method === 'GET') {
+          const h = handlers.workpanelDispatchGet(auth, decodeURIComponent(rest[0]));
+          return send(res, h.status, h.body);
+        }
+        if (rest.length === 2 && rest[0] && rest[1] === 'cancel' && req.method === 'POST') {
+          const h = await handlers.workpanelDispatchCancel(auth, decodeURIComponent(rest[0]), await readJson(req));
+          return send(res, h.status, h.body);
+        }
+      }
+
       if (req.method === 'GET' && pathname === '/v1/members') {
         const h = await handlers.members(auth, {
           group: url.searchParams.get('group'),

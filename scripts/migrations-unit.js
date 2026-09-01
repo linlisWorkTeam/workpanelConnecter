@@ -16,13 +16,14 @@ try {
   let database = openDb(freshPath);
   assert.deepEqual(
     database.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => row.version),
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
   );
   assert(columns(database, 'runner_tasks').has('lease_until'));
+  assert(columns(database, 'workpanel_dispatches').has('request_hash'));
   closeDb();
 
   database = openDb(freshPath);
-  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 12);
+  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 13);
   closeDb();
 
   const legacyPath = path.join(root, 'legacy.db');
@@ -72,7 +73,7 @@ try {
   assert.equal(database.prepare(`SELECT protocol_version FROM runners WHERE id='runner-old'`).get().protocol_version, 1);
   assert.deepEqual(
     database.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => row.version),
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
   );
   closeDb();
   assert(fs.readdirSync(root).some((name) => name.startsWith('legacy.db.backup-')));

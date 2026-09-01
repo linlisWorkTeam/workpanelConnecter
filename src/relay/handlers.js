@@ -66,6 +66,11 @@ import { listSecurityDeliveries, operationalHealthDetail, traceTimeline } from '
 import { createFederationPolicy, disableFederationPolicy, listFederationPolicies } from './handlers/policyHandlers.js';
 import { directoryEndpointsHandler, directorySubjectsHandler, routeExplainHandler } from './handlers/directoryHandlers.js';
 import {
+  cancelWorkpanelDispatch,
+  createWorkpanelDispatch,
+  getWorkpanelDispatch,
+} from './services/workpanelDispatchService.js';
+import {
   federationAcceptHandler, federationAckHandler, federationAdvertiseHandler,
   federationCompleteHandler, federationDirectoryHandler, federationPullHandler,
 } from './handlers/federationHostHandlers.js';
@@ -756,13 +761,17 @@ export function createHandlers({ config }) {
           return { status: 403, body: { error: 'runner token required' } };
         }
         const r = await submitRunnerTaskResult(config, auth.runner, body);
+        const task = r?.status === 200
+          ? db().prepare(`SELECT * FROM runner_tasks WHERE id=?`).get(body.taskId)
+          : null;
         if (r?.status === 200 && !r?.body?.duplicate && r?.body?.federation && ['completed', 'failed', 'cancelled'].includes(r.body.status)) {
-          const task = db().prepare(`SELECT * FROM runner_tasks WHERE id=?`).get(body.taskId);
           await enqueueFederationRunEvent(config, task, body);
           await flushFederationOutboxOnce(config).catch(() => {});
         }
         // E2: best-effort write-back into the WP group thread (as the agent)
-        if (r?.status === 200 && !r?.body?.duplicate && r?.body?.status === 'completed' && body.writeBack !== false) {
+        let taskContext = {};
+        try { taskContext = task?.context_json ? JSON.parse(task.context_json) : {}; } catch {}
+        if (r?.status === 200 && !r?.body?.duplicate && r?.body?.status === 'completed' && body.writeBack !== false && taskContext.writeBack !== false) {
           postRunnerResultToGroup(config, auth.runner, body).catch(() => {});
         }
         return r;
@@ -792,6 +801,18 @@ export function createHandlers({ config }) {
 
       routeExplain(auth, query) {
         return routeExplainHandler(auth, query);
+      },
+
+      workpanelDispatchCreate(auth, body, options) {
+        return createWorkpanelDispatch(config, auth, body, options);
+      },
+
+      workpanelDispatchGet(auth, dispatchId) {
+        return getWorkpanelDispatch(config, auth, dispatchId);
+      },
+
+      workpanelDispatchCancel(auth, dispatchId, body) {
+        return cancelWorkpanelDispatch(config, auth, dispatchId, body);
       },
 
       opsTaskRequeue(auth, taskId, body) {
