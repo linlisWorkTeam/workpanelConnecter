@@ -314,6 +314,10 @@ export async function probeWorkPanel(server, team, { timeoutMs = 5000 } = {}) {
   }
 }
 
+export function wpDispatchLoginTimeout(timeoutMs = 20000) {
+  return Math.min(Math.max(Number(timeoutMs) || 20000, 1), 15000);
+}
+
 export async function dispatchWorkPanel(server, team, prompt, options = {}) {
   const { timeoutMs = 20000 } = options;
   try {
@@ -327,7 +331,7 @@ export async function dispatchWorkPanel(server, team, prompt, options = {}) {
         taskId: null,
       };
     }
-    const session = await wpSession(server, { timeoutMs: Math.min(timeoutMs, 5000) });
+    const session = await wpSession(server, { timeoutMs: wpDispatchLoginTimeout(timeoutMs) });
     await wpPresenceHeartbeat(server, { timeoutMs: 3000 });
     const { group, members } = await wpResolveGroup(server, team, session.token);
     const coordinator = pickCoordinatorAgent(group, members, team);

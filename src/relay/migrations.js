@@ -11,6 +11,11 @@ function checksum(text) {
   return crypto.createHash('sha256').update(text).digest('hex');
 }
 
+function migrationChecksums(sql) {
+  const canonical = checksum(sql.replace(/\r\n?/g, '\n'));
+  return { canonical, accepted: new Set([canonical, checksum(sql)]) };
+}
+
 function sqlQuote(value) {
   return `'${String(value).replaceAll("'", "''")}'`;
 }
@@ -23,7 +28,15 @@ export function loadMigrations(migrationsDir = DEFAULT_MIGRATIONS_DIR) {
       const file = path.join(migrationsDir, entry.name);
       const sql = fs.readFileSync(file, 'utf8');
       const version = Number(entry.name.match(/^(\d+)/)[1]);
-      return { version, name: entry.name, file, sql, checksum: checksum(sql) };
+      const checksums = migrationChecksums(sql);
+      return {
+        version,
+        name: entry.name,
+        file,
+        sql,
+        checksum: checksums.canonical,
+        acceptedChecksums: checksums.accepted,
+      };
     })
     .sort((a, b) => a.version - b.version);
 }
@@ -69,7 +82,7 @@ function validateChecksums(applied, migrations) {
     if (!current) {
       throw new Error(`migration ${row.version} (${row.name}) is applied but missing from source`);
     }
-    if (current.name !== row.name || current.checksum !== row.checksum) {
+    if (current.name !== row.name || !current.acceptedChecksums.has(row.checksum)) {
       throw new Error(`migration checksum mismatch: ${row.version} ${row.name}`);
     }
   }

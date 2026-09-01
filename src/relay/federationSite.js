@@ -12,6 +12,8 @@ import { appendAudit } from './auditLog.js';
 import { recordTelemetry } from './telemetry.js';
 import { postAsAgent } from '../workpanelClient.js';
 import { federationHostRequest as request } from './federationClient.js';
+import { cancelTask } from './services/taskQueueService.js';
+import { completeWorkpanelDispatchFromFederation } from './services/workpanelDispatchProjection.js';
 
 export function enqueueFederationEnvelope(config, input) {
   const unsigned = createFederationEnvelope({ originSite: siteIdFor(config), ...input });
@@ -102,8 +104,14 @@ async function processRunEvent(config, envelope) {
   const originalId = String(envelope.payload.originalMessageId || '');
   const projection = await writeTx((database) => {
     const up = getMessageById(database, originalId);
-    if (!up) throw new Error('origin message unavailable');
-    const status = envelope.payload.status === 'completed' ? 'completed' : 'failed';
+    if (!up) {
+      const provider = completeWorkpanelDispatchFromFederation(database, envelope);
+      if (provider) return { ...provider, provider: true };
+      throw new Error('origin message unavailable');
+    }
+    const status = ['completed', 'failed', 'cancelled'].includes(envelope.payload.status)
+      ? envelope.payload.status
+      : 'failed';
     const payloadHash = createHash('sha256').update(JSON.stringify(envelope.payload || {})).digest('hex');
     const prior = database.prepare(`SELECT * FROM federation_run_terminals WHERE correlation_id=?`).get(envelope.correlationId);
     if (prior) {
@@ -155,6 +163,25 @@ async function processRunEvent(config, envelope) {
   return { ...projection, writeBack: { ok: writeBackResult.ok, status: writeBackResult.status } };
 }
 
+async function processRunCancel(config, envelope) {
+  const task = db().prepare(
+    `SELECT * FROM runner_tasks WHERE federation_origin_site=? AND federation_correlation_id=? ORDER BY created_at DESC LIMIT 1`
+  ).get(envelope.originSite, envelope.correlationId);
+  if (!task) throw new Error('federated task unavailable');
+  const cancelled = await cancelTask(task.id, {
+    actor: `federation:${envelope.originSite}`,
+    reason: envelope.payload?.reason || 'cancelled by origin provider',
+  });
+  if (cancelled.status !== 200) {
+    if (cancelled.body?.code === 'TASK_TERMINAL') return { taskId: task.id, status: task.status, terminal: true };
+    throw new Error(cancelled.body?.error || 'federated cancellation failed');
+  }
+  const updated = db().prepare(`SELECT * FROM runner_tasks WHERE id=?`).get(task.id);
+  await enqueueFederationRunEvent(config, updated, { status: 'cancelled', content: null });
+  await flushFederationOutboxOnce(config).catch(() => {});
+  return { taskId: task.id, status: 'cancelled' };
+}
+
 async function processInboxEnvelope(config, envelope) {
   const policy = authorizeFederation(config, { originSite: envelope.originSite, targetSite: envelope.targetSite,
     groupRef: envelope.groupRef, subjectId: envelope.toSubject, operation: envelope.kind, direction: 'inbound',
@@ -168,6 +195,7 @@ async function processInboxEnvelope(config, envelope) {
   }
   if (envelope.kind === 'chat.command') return processChatCommand(config, envelope);
   if (envelope.kind === 'run.event') return processRunEvent(config, envelope);
+  if (envelope.kind === 'run.cancel') return processRunCancel(config, envelope);
   return { ignored: true };
 }
 
@@ -315,7 +343,8 @@ export async function enqueueFederationRunEvent(config, task, body) {
     targetSite: task.federation_origin_site, groupRef: `wp:${task.federation_origin_site}:${encodeURIComponent(task.group_id)}`,
     fromSubject: stableSubjectId({ siteId: siteIdFor(config), kind: 'agent', localId: task.runner_id }),
     toSubject: fed.fromSubject, kind: 'run.event', correlationId: task.federation_correlation_id,
-    causationId: task.federation_message_id, traceId: fed.traceId, payload: { taskId: task.id, originalMessageId: fed.originalMessageId, status: body.status, content: body.content },
+    causationId: task.federation_message_id, traceId: fed.traceId,
+    payload: { taskId: task.id, originalMessageId: fed.originalMessageId, status: body.status, content: body.content, writeBack: context.writeBack !== false },
   });
 }
 

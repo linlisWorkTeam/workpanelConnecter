@@ -16,6 +16,7 @@ import {
   wpListGroupMessages,
   wpGetPresence,
   dispatchWorkPanel,
+  wpDispatchLoginTimeout,
 } from '../src/workpanelClient.js';
 import { createHandlers } from '../src/relay/handlers.js';
 import { coordinatorAgentName, resolveChatTarget } from '../src/relay/groupConsole.js';
@@ -26,6 +27,10 @@ const members = [
   { id: 'a1', kind: 'agent', displayName: 'Cursor Agent', isActive: true },
   { id: 'a2', kind: 'agent', displayName: 'Cursor', isActive: true },
 ];
+
+assert.equal(wpDispatchLoginTimeout(), 15000);
+assert.equal(wpDispatchLoginTimeout(8000), 8000);
+assert.equal(wpDispatchLoginTimeout(30000), 15000);
 
 {
   const hit = parseAgentMention('@Cursor Agent 修一下', members);

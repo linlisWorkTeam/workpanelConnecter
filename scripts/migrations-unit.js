@@ -4,6 +4,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
 import { closeDb, openDb } from '../src/relay/db.js';
+import { loadMigrations } from '../src/relay/migrations.js';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'connecter-migrations-'));
 
@@ -12,17 +13,26 @@ function columns(database, table) {
 }
 
 try {
+  const lfDir = path.join(root, 'lf-migrations');
+  const crlfDir = path.join(root, 'crlf-migrations');
+  fs.mkdirSync(lfDir);
+  fs.mkdirSync(crlfDir);
+  fs.writeFileSync(path.join(lfDir, '001-line-endings.sql'), 'SELECT 1;\nSELECT 2;\n');
+  fs.writeFileSync(path.join(crlfDir, '001-line-endings.sql'), 'SELECT 1;\r\nSELECT 2;\r\n');
+  assert.equal(loadMigrations(lfDir)[0].checksum, loadMigrations(crlfDir)[0].checksum);
+
   const freshPath = path.join(root, 'fresh.db');
   let database = openDb(freshPath);
   assert.deepEqual(
     database.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => row.version),
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
   );
   assert(columns(database, 'runner_tasks').has('lease_until'));
+  assert(columns(database, 'workpanel_dispatches').has('request_hash'));
   closeDb();
 
   database = openDb(freshPath);
-  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 12);
+  assert.equal(database.prepare('SELECT COUNT(*) AS n FROM schema_migrations').get().n, 13);
   closeDb();
 
   const legacyPath = path.join(root, 'legacy.db');
@@ -72,7 +82,7 @@ try {
   assert.equal(database.prepare(`SELECT protocol_version FROM runners WHERE id='runner-old'`).get().protocol_version, 1);
   assert.deepEqual(
     database.prepare('SELECT version FROM schema_migrations ORDER BY version').all().map((row) => row.version),
-    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
+    [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13]
   );
   closeDb();
   assert(fs.readdirSync(root).some((name) => name.startsWith('legacy.db.backup-')));
