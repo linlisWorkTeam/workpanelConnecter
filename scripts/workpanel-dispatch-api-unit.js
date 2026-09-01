@@ -62,6 +62,15 @@ try {
     return { status: response.status, body: await response.json() };
   };
 
+  // Connecter Host is the stable provider endpoint in multi-site deployments.
+  // It must keep the WorkPanel dispatch surface while hiding ordinary site APIs.
+  config.host.role = 'host';
+  assert.equal((await request('POST', '/v2/dispatches', {
+    token: serviceToken, body: {}, idempotencyKey: 'host-route-probe',
+  })).status, 400);
+  assert.equal((await request('GET', '/v1/envs', { token: opsToken })).status, 404);
+  config.host.role = 'standalone';
+
   assert.equal((await request('POST', '/v1/agents/heartbeat', { token: runnerToken, body: {} })).status, 200);
   const targetSubjectId = db().prepare(
     `SELECT subject_id FROM subjects WHERE site_id='site-test' AND local_id='runner-provider-test'`
