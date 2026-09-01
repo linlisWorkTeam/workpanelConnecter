@@ -8,8 +8,9 @@ import { hasOnlyExternalSigningKeys, peerVerificationKeys, signFederationEnvelop
 import { authorizeFederation } from './accessPolicy.js';
 import { appendAudit } from './auditLog.js';
 import { checkFederationQuota } from './quotas.js';
-import { parseGroupRef } from './services/identityService.js';
+import { parseGroupRef, stableSubjectId } from './services/identityService.js';
 import { recordTelemetry } from './telemetry.js';
+import { completeWorkpanelDispatchFromFederation } from './services/workpanelDispatchProjection.js';
 
 const activePulls = new Map();
 
@@ -124,6 +125,55 @@ export function enqueueHostFederationMessage(config, input) {
   });
 }
 
+function acceptHostTargetMessage(config, peer, envelope) {
+  if (envelope.kind !== 'run.event') {
+    return Promise.resolve({ status: 403, body: { error: 'Host target only accepts provider run events', code: 'FEDERATION_DENIED' } });
+  }
+  return writeTx((database) => {
+    const dispatch = database.prepare(`SELECT * FROM workpanel_dispatches WHERE id=?`).get(envelope.correlationId);
+    const expectedSubject = dispatch ? stableSubjectId({
+      siteId: siteIdFor(config), kind: 'service', localId: dispatch.service_id,
+    }) : null;
+    if (!dispatch || dispatch.target_site !== peer.site_id || dispatch.group_ref !== envelope.groupRef ||
+        dispatch.federation_message_id !== envelope.causationId || expectedSubject !== envelope.toSubject) {
+      appendAudit({ eventType: 'federation.host_consume', outcome: 'deny', actor: peer.site_id,
+        siteId: envelope.originSite, subjectId: envelope.toSubject, traceId: envelope.traceId,
+        correlationId: envelope.correlationId, messageId: envelope.messageId,
+        detail: { reason: 'PROVIDER_DISPATCH_MISMATCH' } });
+      return { status: 403, body: { error: 'provider dispatch return mismatch', code: 'FEDERATION_DENIED' } };
+    }
+    const serialized = JSON.stringify(envelope);
+    const existing = database.prepare(
+      `SELECT envelope_json FROM federation_messages WHERE origin_site=? AND message_id=?`
+    ).get(envelope.originSite, envelope.messageId);
+    if (existing && existing.envelope_json !== serialized) {
+      return { status: 409, body: { error: 'messageId envelope conflict', code: 'FEDERATION_ID_CONFLICT' } };
+    }
+    const projection = completeWorkpanelDispatchFromFederation(database, envelope);
+    if (!existing) {
+      const id = `fed_${envelope.originSite}_${envelope.messageId}`;
+      database.prepare(
+        `INSERT INTO federation_messages
+         (id,origin_site,message_id,target_site,group_ref,kind,envelope_json,state,expires_at,policy_version)
+         VALUES (?,?,?,?,?,?,?,'delivered',?,'workpanel-provider-return/v1')`
+      ).run(id, envelope.originSite, envelope.messageId, envelope.targetSite, envelope.groupRef,
+        envelope.kind, serialized, envelope.expiresAt);
+      database.prepare(
+        `INSERT INTO federation_receipts (federation_id,site_id,status,detail_json)
+         VALUES (?,?,'delivered',?)`
+      ).run(id, envelope.targetSite, JSON.stringify({ providerDispatchId: dispatch.id }));
+    }
+    appendAudit({ eventType: 'federation.host_consume', outcome: 'allow', actor: peer.site_id,
+      siteId: envelope.originSite, subjectId: envelope.toSubject, traceId: envelope.traceId,
+      correlationId: envelope.correlationId, messageId: envelope.messageId,
+      policyVersion: 'workpanel-provider-return/v1', detail: { dispatchId: dispatch.id, status: projection.status } });
+    recordTelemetry({ eventName: 'federation.host.consume', siteId: envelope.originSite,
+      traceId: envelope.traceId, correlationId: envelope.correlationId, messageId: envelope.messageId,
+      subjectId: envelope.toSubject, detail: { dispatchId: dispatch.id, status: projection.status } });
+    return { status: 202, body: { accepted: true, duplicate: Boolean(existing), messageId: envelope.messageId, status: 'delivered' } };
+  });
+}
+
 export function acceptFederationMessage(config, peer, input) {
   const roleError = assertHost(config);
   if (roleError) return Promise.resolve(roleError);
@@ -150,6 +200,7 @@ export function acceptFederationMessage(config, peer, input) {
       traceId: envelope.traceId, correlationId: envelope.correlationId, messageId: envelope.messageId });
     return Promise.resolve({ status: 401, body: { error: 'invalid federation signature', code: 'INVALID_SIGNATURE' } });
   }
+  if (envelope.targetSite === siteIdFor(config)) return acceptHostTargetMessage(config, peer, envelope);
   if (!config?.host?.peers?.some((item) => item.siteId === envelope.targetSite)) {
     return Promise.resolve({ status: 403, body: { error: 'federation policy denied', code: 'FEDERATION_DENIED' } });
   }

@@ -4,6 +4,10 @@ import os from 'node:os';
 import path from 'node:path';
 import { bootstrapRelay, closeDb, createRelayServer } from '../src/relay/server.js';
 import { db } from '../src/relay/db.js';
+import { createFederationEnvelope } from '../src/relay/contracts/federation.js';
+import { signFederationEnvelope } from '../src/relay/envelopeSignature.js';
+import { acceptFederationMessage } from '../src/relay/federationHost.js';
+import { stableSubjectId } from '../src/relay/services/identityService.js';
 
 const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'connecter-workpanel-dispatch-'));
 const dbPath = path.join(tempDir, 'relay.db');
@@ -189,6 +193,26 @@ try {
   assert.equal(queuedRemote.target_site, remoteSiteId);
   assert.equal(queuedRemote.status, 'queued');
   assert.equal(JSON.parse(queuedRemote.envelope_json).keyId, 'peer-token-v1');
+  const remoteResult = signFederationEnvelope(createFederationEnvelope({
+    originSite: remoteSiteId,
+    targetSite: 'site-test',
+    groupRef,
+    fromSubject: remoteSubjectId,
+    toSubject: stableSubjectId({ siteId: 'site-test', kind: 'service', localId: 'provider-test' }),
+    kind: 'run.event',
+    correlationId: remote.body.dispatchId,
+    causationId: remoteMessageId,
+    payload: { taskId: 'remote-task-1', status: 'completed', content: { text: 'remote provider result' } },
+  }), { keyId: 'peer-token-v1', secret: 'unit-remote-peer-token-only' });
+  const acceptedRemoteResult = await acceptFederationMessage(config, { site_id: remoteSiteId }, remoteResult);
+  assert.equal(acceptedRemoteResult.status, 202);
+  assert.equal(acceptedRemoteResult.body.status, 'delivered');
+  const completedRemote = await request('GET', `/v2/dispatches/${remote.body.dispatchId}`, { token: serviceToken });
+  assert.equal(completedRemote.status, 200);
+  assert.equal(completedRemote.body.status, 'completed');
+  assert.deepEqual(completedRemote.body.result.content, { text: 'remote provider result' });
+  const replayedRemoteResult = await acceptFederationMessage(config, { site_id: remoteSiteId }, remoteResult);
+  assert.equal(replayedRemoteResult.body.duplicate, true);
 
   console.log('WORKPANEL_DISPATCH_API_OK');
 } finally {
