@@ -51,6 +51,31 @@ function startMockWorkPanel(port, groupId, writeBacks) {
   return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
 }
 
+function startTransientPollProxy(port, targetPort, state) {
+  const server = http.createServer((request, response) => {
+    const url = new URL(request.url, 'http://127.0.0.1');
+    if (url.pathname === '/v1/agents/tasks' && state.failures === 0) {
+      state.failures += 1;
+      response.writeHead(503, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ error: 'transient relay restart' }));
+      return;
+    }
+    const upstream = http.request({
+      hostname: '127.0.0.1', port: targetPort, path: request.url,
+      method: request.method, headers: request.headers,
+    }, (upstreamResponse) => {
+      response.writeHead(upstreamResponse.statusCode || 502, upstreamResponse.headers);
+      upstreamResponse.pipe(response);
+    });
+    upstream.on('error', () => {
+      if (!response.headersSent) response.writeHead(502, { 'content-type': 'application/json' });
+      response.end(JSON.stringify({ error: 'relay unavailable' }));
+    });
+    request.pipe(upstream);
+  });
+  return new Promise((resolve) => server.listen(port, '127.0.0.1', () => resolve(server)));
+}
+
 function waitForOutput(child, pattern, timeoutMs = 10000) {
   return new Promise((resolve, reject) => {
     let output = '';
@@ -73,11 +98,13 @@ async function main() {
   const databasePath = path.join(temporary, 'connector.db');
   const fakeCodexPath = path.join(temporary, 'fake-codex.mjs');
   const relayPort = Number(process.env.CONNECTER_CODEX_GATE_PORT || 19097);
+  const runnerProxyPort = relayPort + 2;
   const workPanelPort = Number(process.env.CONNECTER_CODEX_GATE_WP_PORT || 19098);
   const groupId = 'group-codex-runner-gate';
   const runnerToken = `runner-${randomUUID()}`;
   const petToken = `pet-${randomUUID()}`;
   const writeBacks = [];
+  const proxyState = { failures: 0 };
 
   fs.writeFileSync(fakeCodexPath, `
 let prompt = '';
@@ -122,7 +149,8 @@ process.stdin.on('end', () => {
 
   const mockWorkPanel = await startMockWorkPanel(workPanelPort, groupId, writeBacks);
   const { server } = await listenRelay({ configPath, dbPath: databasePath, resume: false });
-  const baseUrl = `http://127.0.0.1:${relayPort}`;
+  const proxy = await startTransientPollProxy(runnerProxyPort, relayPort, proxyState);
+  const baseUrl = `http://127.0.0.1:${runnerProxyPort}`;
   const runner = spawn(process.execPath, [path.join(process.cwd(), 'scripts', 'codex-runner.js'), '--config', configPath, '--relay', baseUrl, '--agentId', 'codex-windows-gate', '--once'], {
     cwd: process.cwd(), stdio: ['ignore', 'pipe', 'pipe'], windowsHide: true,
   });
@@ -143,6 +171,7 @@ process.stdin.on('end', () => {
       runner.once('close', (code) => { clearTimeout(timer); resolve(code); });
     });
     assert(exitCode === 0, `runner exited cleanly: ${runnerStderr}`);
+    assert(proxyState.failures === 1, 'runner recovered after transient task poll failure');
     const run = await jsonFetch(`${baseUrl}/v1/runs/${messageId}`, {
       headers: { authorization: 'Bearer ops-gate-token' },
     });
@@ -152,6 +181,7 @@ process.stdin.on('end', () => {
   } finally {
     if (runner.exitCode == null) runner.kill();
     await new Promise((resolve) => server.close(resolve));
+    await new Promise((resolve) => proxy.close(resolve));
     await new Promise((resolve) => mockWorkPanel.close(resolve));
     closeDb();
   }
