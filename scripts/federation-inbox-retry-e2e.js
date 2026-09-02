@@ -115,6 +115,7 @@ try {
     return response.body.tasks?.[0];
   }, 'retry creates runner task');
   assert.equal(task.prompt, 'retry without Host redelivery');
+  assert.equal(task.context.federation.groupRef, ref);
   await eventually(() => completion === 'delivered', 'Host completion after local retry');
   assert.equal(offeredMessages, 1, 'body was not redelivered by Host');
   assert.ok(ackRequests >= 2, 'lost ack response was reconciled from the local inbox lease token');

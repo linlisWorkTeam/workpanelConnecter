@@ -10,6 +10,8 @@ import {
   enqueueFederationEnvelope,
   flushFederationOutboxOnce,
 } from '../federationSite.js';
+import { enqueueHostFederationMessage } from '../federationHost.js';
+import { hostRole } from '../hostPeers.js';
 import {
   parseGroupRef,
   stableSubjectId,
@@ -38,6 +40,13 @@ function deterministicUuid(value) {
   bytes[8] = (bytes[8] & 0x3f) | 0x80;
   const hex = bytes.toString('hex');
   return `${hex.slice(0, 8)}-${hex.slice(8, 12)}-${hex.slice(12, 16)}-${hex.slice(16, 20)}-${hex.slice(20)}`;
+}
+
+async function enqueueRemoteEnvelope(config, input) {
+  if (hostRole(config) === 'host') return enqueueHostFederationMessage(config, input);
+  const envelope = await enqueueFederationEnvelope(config, input);
+  await flushFederationOutboxOnce(config).catch(() => {});
+  return envelope;
 }
 
 function hasScope(service, required) {
@@ -243,7 +252,7 @@ export async function createWorkpanelDispatch(config, auth, body = {}, { idempot
         await updateDispatch(dispatchId, { status: 'failed', last_error: 'federation disabled', completed_at: new Date().toISOString() });
         return { status: 503, body: { error: 'federation disabled', code: 'FEDERATION_DISABLED', traceId } };
       }
-      const envelope = await enqueueFederationEnvelope(config, {
+      const envelope = await enqueueRemoteEnvelope(config, {
         messageId: deterministicUuid(`workpanel-dispatch-message/${dispatchId}`),
         targetSite: route.target.siteId,
         groupRef,
@@ -263,7 +272,6 @@ export async function createWorkpanelDispatch(config, auth, body = {}, { idempot
         },
       });
       await updateDispatch(dispatchId, { federation_message_id: envelope.messageId, status: 'federating' });
-      await flushFederationOutboxOnce(config).catch(() => {});
     }
   } catch (error) {
     await updateDispatch(dispatchId, { status: 'failed', last_error: String(error.message || error), completed_at: new Date().toISOString() });
@@ -302,7 +310,7 @@ export async function cancelWorkpanelDispatch(config, auth, dispatchId, body = {
     if (result.status !== 200) return result;
     await updateDispatch(dispatchId, { status: 'cancelled', completed_at: new Date().toISOString(), last_error: reason });
   } else {
-    const envelope = await enqueueFederationEnvelope(config, {
+    const envelope = await enqueueRemoteEnvelope(config, {
       messageId: deterministicUuid(`workpanel-dispatch-cancel/${dispatchId}`),
       targetSite: current.targetSite,
       groupRef: current.groupRef,
@@ -315,7 +323,6 @@ export async function cancelWorkpanelDispatch(config, auth, dispatchId, body = {
       payload: { reason, writeBack: false },
     });
     await updateDispatch(dispatchId, { status: 'cancel_requested', federation_message_id: envelope.messageId });
-    await flushFederationOutboxOnce(config).catch(() => {});
   }
   appendAudit({ eventType: 'workpanel.dispatch_cancel', outcome: 'allow', actor: `workpanel-service:${auth.service.id}`,
     siteId: localSiteId, subjectId: current.targetSubjectId, traceId: current.traceId, correlationId: dispatchId,

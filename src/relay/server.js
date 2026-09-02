@@ -128,7 +128,11 @@ export function createRelayServer(options = {}) {
       }
 
       const hostOnly = config?.host?.role === 'host';
-      const hostPath = pathname.startsWith('/v1/host/') || pathname.startsWith('/v1/federation/') || pathname.startsWith('/v1/ops/');
+      const hostPath =
+        pathname.startsWith('/v1/host/') ||
+        pathname.startsWith('/v1/federation/') ||
+        pathname.startsWith('/v1/ops/') ||
+        pathname.startsWith('/v2/dispatches');
       if (hostOnly && !hostPath) {
         return send(res, 404, { error: 'not found', path: pathname });
       }

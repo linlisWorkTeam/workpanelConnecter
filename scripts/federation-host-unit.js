@@ -7,11 +7,11 @@ import { registerHostPeer, findHostPeerByToken } from '../src/relay/hostPeers.js
 import { createFederationEnvelope } from '../src/relay/contracts/federation.js';
 import { stableSubjectId, groupRef } from '../src/relay/services/identityService.js';
 import { signFederationEnvelope } from '../src/relay/envelopeSignature.js';
-import { acceptFederationMessage, pullFederationMessages, ackFederationMessage, completeFederationMessage, advertiseFederationRoutes, listFederationRoutes } from '../src/relay/federationHost.js';
+import { acceptFederationMessage, pullFederationMessages, ackFederationMessage, completeFederationMessage, advertiseFederationRoutes, listFederationRoutes, enqueueHostFederationMessage } from '../src/relay/federationHost.js';
 
 const root = fs.mkdtempSync(path.join(os.tmpdir(), 'connecter-fed-host-'));
 process.env.CONNECTER_TEST_HOST_SIGN_A = 'sign-secret-a';
-const config = { host: { role: 'host', peers: [{ siteId: 'site-a', token: 'token-a', keys: [{ keyId: 'sign-a', secretEnv: 'CONNECTER_TEST_HOST_SIGN_A', status: 'active' }] }, { siteId: 'site-b', token: 'token-b' }] }, federation: { leaseSec: 2, requireSignatures: true, requireSeparateSigningKey: true, requireExternalSigningKey: true, policies: [{ originSite: 'site-a', targetSite: 'site-b', groupRef: 'wp:site-a:group-1', subjectId: '*', operation: '*', direction: '*', effect: 'allow', version: 'host-unit/v1' }], quotas: { maxConcurrentPulls: 1 } } };
+const config = { host: { role: 'host', siteId: 'host-main', peers: [{ siteId: 'site-a', token: 'token-a', keys: [{ keyId: 'sign-a', secretEnv: 'CONNECTER_TEST_HOST_SIGN_A', status: 'active' }] }, { siteId: 'site-b', token: 'token-b' }] }, federation: { leaseSec: 2, requireSignatures: true, requireSeparateSigningKey: true, requireExternalSigningKey: true, policies: [{ originSite: 'site-a', targetSite: 'site-b', groupRef: 'wp:site-a:group-1', subjectId: '*', operation: '*', direction: '*', effect: 'allow', version: 'host-unit/v1' }, { originSite: 'host-main', targetSite: 'site-a', groupRef: 'wp:site-a:group-1', subjectId: '*', operation: '*', direction: '*', effect: 'allow', version: 'host-provider/v1' }], quotas: { maxConcurrentPulls: 1 } } };
 openDb(path.join(root, 'host.db'));
 try {
   await registerHostPeer(config, { siteId: 'site-a', token: 'token-a' });
@@ -20,6 +20,19 @@ try {
   const peerB = findHostPeerByToken('token-b');
   const ref = groupRef({ authority: 'site-a', groupId: 'group-1' });
   const subjectB = stableSubjectId({ siteId: 'site-b', kind: 'agent', localId: 'runner-b' });
+  const subjectA = stableSubjectId({ siteId: 'site-a', kind: 'agent', localId: 'runner-a' });
+  const hostEnvelope = await enqueueHostFederationMessage(config, {
+    targetSite: 'site-a', groupRef: ref,
+    fromSubject: stableSubjectId({ siteId: 'host-main', kind: 'service', localId: 'workpanel-provider' }),
+    toSubject: subjectA, kind: 'chat.command', payload: { content: 'provider dispatch' },
+  });
+  assert.equal(hostEnvelope.originSite, 'host-main');
+  assert.equal(hostEnvelope.keyId, 'sign-a');
+  const hostPulled = await pullFederationMessages(config, peerA, { limit: 1 });
+  assert.equal(hostPulled.body.messages[0].envelope.messageId, hostEnvelope.messageId);
+  const hostLease = { originSite: 'host-main', messageId: hostEnvelope.messageId, leaseToken: hostPulled.body.messages[0].leaseToken };
+  await ackFederationMessage(config, peerA, hostLease);
+  await completeFederationMessage(config, peerA, { ...hostLease, status: 'delivered' });
   const unsigned = createFederationEnvelope({ originSite: 'site-a', targetSite: 'site-b', groupRef: ref,
     fromSubject: stableSubjectId({ siteId: 'site-a', kind: 'workpet', localId: 'pet-a' }), toSubject: subjectB,
     kind: 'chat.command', payload: { content: 'hello' } });

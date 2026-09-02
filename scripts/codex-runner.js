@@ -243,13 +243,28 @@ async function main() {
   await request(runtime, '/v1/agents/heartbeat', { body: {} });
 
   let processed = 0;
+  let pollFailures = 0;
   while (!stopping) {
-    const pulled = await request(runtime, '/v1/agents/tasks', { body: {} });
-    if (pulled.status !== 200) throw new Error(`task poll failed HTTP ${pulled.status}`);
+    let pulled;
+    try {
+      pulled = await request(runtime, '/v1/agents/tasks', { body: {} });
+      if (pulled.status !== 200) throw new Error(`task poll failed HTTP ${pulled.status}`);
+      pollFailures = 0;
+    } catch (error) {
+      pollFailures += 1;
+      const retryMs = Math.min(30000, 800 * (2 ** Math.min(pollFailures - 1, 5)));
+      console.error(`[codex-runner] poll unavailable; retrying in ${retryMs}ms: ${String(error.message || error)}`);
+      await sleep(retryMs);
+      continue;
+    }
     for (const task of pulled.body?.tasks || []) {
-      await executeTask(runtime, task, sessions);
-      processed += 1;
-      if (has('--once')) stopping = true;
+      try {
+        await executeTask(runtime, task, sessions);
+        processed += 1;
+        if (has('--once')) stopping = true;
+      } catch (error) {
+        console.error(`[codex-runner] task ${task.taskId} failed locally; lease will recover: ${String(error.message || error)}`);
+      }
     }
     if (!stopping) await sleep(800);
   }

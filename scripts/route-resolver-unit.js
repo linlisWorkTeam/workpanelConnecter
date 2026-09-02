@@ -55,6 +55,34 @@ try {
   });
   assert.equal(outsider.target, null);
   assert.equal(outsider.reason, 'NO_MATCHING_SUBJECT');
+
+  const federatedRef = groupRef({ authority: 'site-a', groupId: 'federated-group' });
+  const federatedSubjectId = '11111111-1111-5111-8111-111111111111';
+  db().prepare(
+    `INSERT INTO federation_routes
+     (id,group_ref,subject_id,display_name,site_id,capabilities_json,status,expires_at)
+     VALUES ('fed-route',?,?,?,?,?,'active',datetime('now','+90 seconds'))`
+  ).run(federatedRef, federatedSubjectId, 'Federated Codex', 'site-c', JSON.stringify(['code.execute']));
+  const federated = resolveRoute({
+    groupRef: federatedRef, targetSubjectId: federatedSubjectId,
+    requiredCapabilities: ['code.execute'], sourceSiteId: 'site-a',
+  });
+  assert.equal(federated.target.siteId, 'site-c');
+  assert.equal(federated.target.runtime, 'federation');
+  assert.equal(federated.reason, 'REMOTE_ELIGIBLE_ENDPOINT');
+  const federatedMissing = resolveRoute({
+    groupRef: federatedRef, targetSubjectId: federatedSubjectId,
+    requiredCapabilities: ['image.generate'], sourceSiteId: 'site-a',
+  });
+  assert.equal(federatedMissing.target, null);
+  assert.equal(federatedMissing.considered[0].reason, 'CAPABILITY_MISSING');
+  db().prepare(`UPDATE federation_routes SET expires_at=datetime('now','-1 second') WHERE id='fed-route'`).run();
+  const federatedExpired = resolveRoute({
+    groupRef: federatedRef, targetSubjectId: federatedSubjectId, sourceSiteId: 'site-a',
+  });
+  assert.equal(federatedExpired.target, null);
+  assert.equal(federatedExpired.reason, 'NO_ONLINE_ENDPOINT');
+
   db().prepare(`UPDATE endpoints SET expires_at=datetime('now','-1 second')`).run();
   const offline = resolveRoute({ groupRef: ref, targetSubjectId: localSubjectId, sourceSiteId: 'site-a' });
   assert.equal(offline.target, null);

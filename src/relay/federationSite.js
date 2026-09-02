@@ -94,7 +94,7 @@ async function processChatCommand(config, envelope) {
     runnerId: binding.runner_id, channelId: binding.channel_id, env: envelope.payload.env,
     groupId: parsed.groupId, groupName: envelope.payload.groupName || parsed.groupId,
     agentName: route.target.displayName, content: envelope.payload.content,
-    context: { ...(envelope.payload.context || {}), federation: { originSite: envelope.originSite, messageId: envelope.messageId, correlationId: envelope.correlationId, traceId: envelope.traceId, fromSubject: envelope.fromSubject, originalMessageId: envelope.payload.originalMessageId } },
+    context: { ...(envelope.payload.context || {}), federation: { originSite: envelope.originSite, messageId: envelope.messageId, correlationId: envelope.correlationId, traceId: envelope.traceId, groupRef: envelope.groupRef, fromSubject: envelope.fromSubject, originalMessageId: envelope.payload.originalMessageId } },
     federation: { originSite: envelope.originSite, messageId: envelope.messageId, correlationId: envelope.correlationId },
   });
   return { taskId: task.id };
@@ -340,11 +340,11 @@ export async function enqueueFederationRunEvent(config, task, body) {
   const context = task.context_json ? JSON.parse(task.context_json) : {};
   const fed = context.federation || {};
   return enqueueFederationEnvelope(config, {
-    targetSite: task.federation_origin_site, groupRef: `wp:${task.federation_origin_site}:${encodeURIComponent(task.group_id)}`,
+    targetSite: task.federation_origin_site, groupRef: fed.groupRef || `wp:${task.federation_origin_site}:${encodeURIComponent(task.group_id)}`,
     fromSubject: stableSubjectId({ siteId: siteIdFor(config), kind: 'agent', localId: task.runner_id }),
     toSubject: fed.fromSubject, kind: 'run.event', correlationId: task.federation_correlation_id,
     causationId: task.federation_message_id, traceId: fed.traceId,
-    payload: { taskId: task.id, originalMessageId: fed.originalMessageId, status: body.status, content: body.content, writeBack: context.writeBack !== false },
+    payload: { taskId: task.id, ...(fed.originalMessageId ? { originalMessageId: fed.originalMessageId } : {}), status: body.status, content: body.content, writeBack: context.writeBack !== false },
   });
 }
 
