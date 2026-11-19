@@ -137,6 +137,8 @@ Query `?limit=` 可选，默认 1，最大 50。有 in-flight 时仍 **200** 且
 
 配置预配见 `config/relay.schema.json` 的 `runners`。
 
+Codex 和 WorkPanel Runner 共用 `src/runners/runnerLoop.js`，心跳与任务续租独立于执行器运行。代码阅读入口及远端取消边界见 [Runner 公共执行核心](../explanation/runner-runtime.md)。两者均顺序执行，每次最多领取一个任务；`wp-runner` 也支持 `--once` 用于本地验收。
+
 ## 9. Codex CLI Runner
 
 `scripts/codex-runner.js` 是 Windows/Linux 通用的 Codex CLI 适配器。它使用官方非交互模式 `codex exec --json`，prompt 经 stdin 传入，只提取最后一个 `item.completed` 的 `agent_message.text`，并要求同时收到 `turn.completed` 与退出码 0。reasoning、命令输出、文件变更事件及原始 stderr 不会写回群聊。
@@ -178,3 +180,4 @@ npm run codex-runner:provision -- --url http://ECS_HOST:8081 --group-id WORKPANE
 Codex Runner 默认 `writeBack: true`，适合从 Connecter `/v1/chat` 触发的链路。若由 WorkPanel provider 调 `/v2/dispatches`，provider 固定 `writeBack: false`，由 WorkPanel 自己把 final Agent 消息落库，防止双写。
 
 参考：[OpenAI Codex 非交互模式](https://learn.chatgpt.com/docs/non-interactive-mode)。真实 token、Codex 登录态和 `config/relay.json` 不得提交。
+

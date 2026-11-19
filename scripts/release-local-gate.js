@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process';
 
 const gates = [
+  'test:runner-runtime', 'test:wp-runner-e2e', 'test:codex-runner', 'test:codex-runner-e2e',
   'test', 'test:relay-unit', 'test:group-console', 'test:mentions', 'test:identity', 'test:pet-login',
   'test:wp-slots', 'test:host-peers', 'test:runner-handler', 'test:runner-compat', 'test:migrations', 'test:runtime-root', 'test:docs', 'test:migration-copy',
   'test:runner-lease', 'test:runner-fencing', 'test:runner-recovery', 'test:runner-ops', 'test:identifiers',
@@ -27,3 +28,4 @@ for (const gate of gates) {
   if (code !== 0) throw new Error(`release gate failed: ${gate} exit=${code}`);
 }
 console.log(`RELEASE_LOCAL_GATE_OK gates=${gates.length}`);
+

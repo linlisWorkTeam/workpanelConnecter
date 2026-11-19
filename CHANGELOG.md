@@ -8,14 +8,15 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 ### Added
 
-- <!-- TODO: 发布新版本前填写新增功能。 -->
+- Shared JavaScript Runner lifecycle with focused runtime tests and a delayed WorkPanel end-to-end gate.
 
 ### Changed
 
-- <!-- TODO: 发布新版本前填写行为或文档变化。 -->
+- Codex and WorkPanel Runners share HTTP transport, heartbeat, polling, lease renewal, and result handling; provider-specific execution remains in small executor modules.
 
 ### Fixed
 
+- WorkPanel Runner now sends heartbeats and renews its task lease during long reply waits. Both Runners keep renewing until final result submission finishes and fence late results after lease loss.
 - Relay dispatch now gives WorkPanel login up to 15 seconds, preventing healthy canary requests from failing when authentication takes slightly longer than the 5-second health-probe budget.
 - Documentation consistency checks now ignore local `.linlis` runtime memory, so ignored machine state cannot break repository gates.
 - Migration checksums are now stable across LF/CRLF checkouts while accepting legacy raw checksums; the migration copy gate now covers migration 013 and rolls back an intentional 014 failure.
@@ -37,3 +38,4 @@ The format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/), and
 
 [Unreleased]: https://github.com/linlisWorkTeam/workpanelConnecter/compare/v0.2.3...HEAD
 [0.2.3]: https://github.com/linlisWorkTeam/workpanelConnecter/releases/tag/v0.2.3
+

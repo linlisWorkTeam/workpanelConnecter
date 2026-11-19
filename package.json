@@ -84,7 +84,9 @@
     "test:soak-smoke": "node scripts/federation-soak.js --duration-ms=7000",
     "test:release-local": "node scripts/release-local-gate.js",
     "build:windows": "powershell -ExecutionPolicy Bypass -File scripts/build-windows-release.ps1",
-    "wp-slot": "node scripts/wp-slot-register.js"
+    "wp-slot": "node scripts/wp-slot-register.js",
+    "test:runner-runtime": "node scripts/runner-runtime-unit.js",
+    "test:wp-runner-e2e": "node scripts/wp-runner-e2e.js"
   },
   "engines": {
     "node": ">=18"
